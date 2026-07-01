@@ -1,0 +1,9 @@
+- type: shader
+  id: DEMMeltdownStage1
+  kind: source
+  path: "/Textures/Shaders/_ErisWS/dem_meltdown_stage1.swsl"
+
+- type: shader
+  id: DEMMeltdownStage2
+  kind: source
+  path: "/Textures/Shaders/_ErisWS/dem_meltdown_stage2.swsl"

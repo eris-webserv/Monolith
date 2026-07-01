@@ -1,0 +1,8 @@
+// boilerplate - will be done later
+
+uniform sampler2D SCREEN_TEXTURE;
+uniform highp float intensity;    // 0..1 stage progress
+
+void fragment() {
+
+}

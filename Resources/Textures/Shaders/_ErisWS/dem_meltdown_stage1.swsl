@@ -1,0 +1,6 @@
+// boilerplate - will be done later
+
+uniform sampler2D SCREEN_TEXTURE;
+
+void fragment() { }
+
