@@ -88,37 +88,20 @@ public sealed partial class CEPlanetDebugOverlay : Overlay
         if (_player.LocalEntity is { } p && _ent.TryGetComponent<TransformComponent>(p, out var px))
             playerWorld = _transform.GetWorldPosition(px);
 
-        // Fixed top-left roster: EVERY planet entity the client knows about, on-map or not. The
-        // per-planet text below anchors at the planet's true projection — off-screen for far
-        // planets — so a stale duplicate (e.g. an old cespawnplanet test entity sitting near the
-        // player) and the real planet trade a single visible readout back and forth, which reads
-        // as the distance "randomly snapping". The roster can't hide entries like that.
-        var rosterPos = new Vector2(10, 40);
-        var rosterIdx = 0;
-
         var query = _ent.EntityQueryEnumerator<CEPlanetComponent, TransformComponent>();
-        while (query.MoveNext(out var uid, out var planet, out var xform))
+        while (query.MoveNext(out _, out var planet, out var xform))
         {
-            var rDist = playerWorld is { } rpw && xform.MapID == args.MapId
-                ? (_transform.GetWorldPosition(xform) - rpw).Length()
-                : float.NaN;
-            var roster = $"[{rosterIdx}] {_ent.ToPrettyString(uid)} map={xform.MapID} " +
-                         $"parent={_ent.ToPrettyString(xform.ParentUid)} dist={rDist:0.0}";
-            handle.DrawString(_font, rosterPos + new Vector2(1, rosterIdx * 14 + 1), roster, Color.Black);
-            handle.DrawString(_font, rosterPos + new Vector2(0, rosterIdx * 14), roster, Color.Yellow);
-            rosterIdx++;
-
             if (xform.MapID != args.MapId)
                 continue;
 
             var worldPos = _transform.GetWorldPosition(xform);
             var dist = playerWorld is { } pw ? (worldPos - pw).Length() : -1f;
             // Mirror the real overlay's zone-then-band eased mapping (t=0 inside ZoneRadius,
-            // 1 - (1-x)² across the band out to ApproachRadius) so the green marker matches.
+            // smoothstep across the band out to ApproachRadius) so the green marker matches.
             var zone = Math.Clamp(planet.ZoneRadius, 0f, planet.ApproachRadius - 1e-3f);
             var band = MathF.Max(planet.ApproachRadius - zone, 1e-4f);
             var lin = dist <= zone ? 0f : MathF.Min((dist - zone) / band, 1f);
-            var t = 1f - (1f - lin) * (1f - lin);
+            var t = lin * lin * (3f - 2f * lin);
 
             var screenPos = vpc.WorldToScreen(worldPos);   // what ViewportControl projects
             var localPos = vp.WorldToLocal(worldPos);      // what the overlay clamps against

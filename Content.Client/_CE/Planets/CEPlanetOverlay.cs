@@ -13,6 +13,7 @@ using Robust.Client.GameObjects;
 using Robust.Client.Graphics;
 using Robust.Shared.Enums;
 using Robust.Shared.Map;
+using Robust.Shared.Prototypes;
 using Robust.Shared.Timing;
 
 namespace Content.Client._CE.Planets;
@@ -28,10 +29,15 @@ public sealed partial class CEPlanetOverlay : Overlay
     [Dependency] private IEntityManager _entManager = null!;
     [Dependency] private IEyeManager _eyeManager = null!;
     [Dependency] private IGameTiming _timing = null!;
+    [Dependency] private IOverlayManager _overlayMan = null!;
 
     private readonly SpriteSystem _sprite;
     private readonly SharedTransformSystem _transform;
     private readonly CESharedZLevelsSystem _zLevel;
+
+    // Planets are distant sky bodies, not lit surfaces — draw them fullbright so the world's
+    // lighting/darkness never dims them (same reason the parallax skybox is unshaded).
+    private readonly ShaderInstance _unshaded;
 
     public override OverlaySpace Space => OverlaySpace.WorldSpaceBelowWorld;
 
@@ -43,6 +49,7 @@ public sealed partial class CEPlanetOverlay : Overlay
         _sprite = _entManager.System<SpriteSystem>();
         _transform = _entManager.System<SharedTransformSystem>();
         _zLevel = _entManager.System<CESharedZLevelsSystem>();
+        _unshaded = IoCManager.Resolve<IPrototypeManager>().Index<ShaderPrototype>("unshaded").Instance();
     }
 
     protected override bool BeforeDraw(in OverlayDrawArgs args)
@@ -68,6 +75,9 @@ public sealed partial class CEPlanetOverlay : Overlay
     {
         var handle = args.WorldHandle;
         var time = (float) _timing.RealTime.TotalSeconds;
+
+        // Fullbright: unaffected by world lighting.
+        handle.UseShader(_unshaded);
 
         // Work in the viewport's LOCAL (render-target pixel) space — WorldToLocal/LocalToWorld carry
         // the whole transform (eye rotation, zoom, z-level scaling). But [0, Size] is NOT the visible
@@ -111,18 +121,25 @@ public sealed partial class CEPlanetOverlay : Overlay
             // clamps there beyond — so it gradually moves toward the screen edge/corner as you
             // pull away, then holds at the edge, MinScale, tracking bearing like a distant body.
             //
-            // The band mapping is eased (1 - (1-x)²): fast recession just outside the zone,
-            // decelerating to zero slope at the approach radius so it settles onto the edge
-            // rather than slamming into the clamp.
+            // The band mapping is smoothstep (ease-in-out, zero slope at both ends): the planet
+            // eases GRADUALLY away from centre as you leave the zone instead of whipping out, and
+            // also decelerates onto the edge rather than slamming into the clamp.
             var zone = Math.Clamp(planet.ZoneRadius, 0f, planet.ApproachRadius - 1e-3f);
             var band = planet.ApproachRadius - zone;
             var lin = dist <= zone ? 0f : MathF.Min((dist - zone) / band, 1f);
-            var t = 1f - (1f - lin) * (1f - lin);
+            var t = lin * lin * (3f - 2f * lin);
 
-            // Zone boundary visual: a world-space ring at the zone edge around the planet's true
-            // coordinate, so the "you are at the planet" region is visible while flying.
-            if (zone > 0f)
-                handle.DrawCircle(worldPos, zone, planet.ZoneColor, false);
+            // Boundary visuals (debug only — gated on the planet debug overlay being active): the
+            // inner ring is the full-size zone (you're "at" the planet inside it), the outer, dimmer
+            // ring is where the sprite has shrunk to MinScale. Drawn here rather than in the debug
+            // overlay because they're world-space circles and that overlay is screen-space.
+            if (_overlayMan.HasOverlay<CEPlanetDebugOverlay>())
+            {
+                if (zone > 0f)
+                    handle.DrawCircle(worldPos, zone, planet.ZoneColor, false);
+                var minScaleRing = MathF.Max(planet.MinScaleRadius, zone + 1e-3f);
+                handle.DrawCircle(worldPos, minScaleRing, planet.ZoneColor.WithAlpha(planet.ZoneColor.A * 0.5f), false);
+            }
 
             // Size runs on its OWN distance mapping, independent of the position compression above:
             // MaxScale inside the zone, easing (smoothstep, flat slope both ends) down to MinScale
@@ -202,5 +219,7 @@ public sealed partial class CEPlanetOverlay : Overlay
             var box = Box2.CenteredAround(drawPos, size);
             handle.DrawTextureRect(tex, new Box2Rotated(box, angle, drawPos));
         }
+
+        handle.UseShader(null);
     }
 }
