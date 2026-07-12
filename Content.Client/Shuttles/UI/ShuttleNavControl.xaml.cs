@@ -2,6 +2,7 @@ using System.Linq;
 using System.Numerics;
 using Content.Client._Mono.Radar;
 using Content.Client.Station; // Frontier
+using Content.Shared._CE.Planets;
 using Content.Shared._Crescent.ShipShields;
 using Content.Shared._Mono.Company;
 using Content.Shared._Mono.Detection;
@@ -887,6 +888,8 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             }
         }
 
+        DrawPlanets(handle, xform.MapID, mapPos.Position, worldToView);
+
         #region Mono
         // Draw radar line
         // First, figure out which angle to draw.
@@ -1183,6 +1186,59 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
     private const int RadarBlipSize = 15;
     private const int RadarFontSize = 8;
+
+    private void DrawPlanets(DrawingHandleScreen handle, MapId mapId, Vector2 mapPos, Matrix3x2 worldToView)
+    {
+        var blips = new List<BlipData>();
+        var query = EntManager.AllEntityQueryEnumerator<CEPlanetComponent, TransformComponent>();
+        while (query.MoveNext(out var uid, out var planet, out var pXform))
+        {
+            if (pXform.MapID != mapId)
+                continue;
+
+            var worldPos = _transform.GetWorldPosition(uid);
+            var uiPosition = Vector2.Transform(worldPos, worldToView) / UIScale;
+            var color = planet.ZoneColor.WithAlpha(0.9f);
+
+            var uiXCentre = (int)Width / 2;
+            var uiYCentre = (int)Height / 2;
+            var uiXOffset = uiPosition.X - uiXCentre;
+            var uiYOffset = uiPosition.Y - uiYCentre;
+            var uiDistance = (int)Math.Sqrt(Math.Pow(uiXOffset, 2) + Math.Pow(uiYOffset, 2));
+            var uiX = uiDistance > 0 ? uiXCentre * uiXOffset / uiDistance : 0;
+            var uiY = uiDistance > 0 ? uiYCentre * uiYOffset / uiDistance : 0;
+
+            var isOutsideRadarCircle = uiDistance > Math.Abs(uiX) && uiDistance > Math.Abs(uiY);
+            if (isOutsideRadarCircle)
+            {
+                uiPosition = new Vector2(
+                    uiXCentre * uiXOffset / uiDistance * 0.95f + uiXCentre,
+                    uiYCentre * uiYOffset / uiDistance * 0.95f + uiYCentre);
+
+                NfAddBlipToList(blips, true, uiPosition, uiXCentre, uiYCentre, color);
+            }
+            var labelOffsetY = RadarBlipSize * 0.5f + 2f;
+            if (!isOutsideRadarCircle)
+            {
+                var radius = RadarBlipSize * 0.5f * planet.MaxScale * UIScale;
+                handle.DrawCircle(uiPosition * UIScale, radius, color);
+                labelOffsetY = radius / UIScale + 4f;
+            }
+
+            if (!ShowIFF)
+                continue;
+
+            var distance = (worldPos - mapPos).Length();
+            var displayedDistance = distance < 50f ? $"{distance:0.0}" : distance < 1000 ? $"{distance:0}" : $"{distance / 1000:0.0}k";
+            var name = EntManager.GetComponent<MetaDataComponent>(uid).EntityName;
+            var label = Loc.GetString("shuttle-console-iff-label", ("name", name), ("distance", displayedDistance));
+            var labelDims = handle.GetDimensions(Font, label, 0.9f);
+            var labelPos = uiPosition + new Vector2(-labelDims.X * 0.5f, labelOffsetY);
+            handle.DrawString(Font, labelPos * UIScale, label, UIScale * 0.9f, color);
+        }
+
+        NfDrawBlips(handle, blips);
+    }
 
     private void DrawShields(DrawingHandleScreen handle, TransformComponent consoleXform, Matrix3x2 matrix)
     {
