@@ -522,6 +522,53 @@ public sealed partial class CEZLevelsSystem
     }
 
     /// <summary>
+    /// Enters transit from a map OUTSIDE any z-network — open space — descending onto
+    /// <paramref name="targetLevel"/>, the top layer of a planet's stack. The regular
+    /// entry derives its gap from the grid's current z-level; here there is none, so
+    /// the gap is (target, open sky): <see cref="CEZTransitMapComponent.UpperMap"/>
+    /// stays null and the grid starts at the very top of the gap, falling toward the
+    /// planet. Single-layer only — a z-grid network can't span multiple space maps,
+    /// so the docked set is the whole party.
+    /// </summary>
+    public bool TryEnterDescent(Entity<MapGridComponent> grid, Entity<CEZMapComponent> targetLevel)
+    {
+        var xform = Transform(grid);
+
+        if (xform.MapUid is not { } currentMap)
+            return false;
+
+        if (HasComp<CEZTransitMapComponent>(currentMap))
+            return false; // Already in transit.
+
+        if (HasComp<CEZMapComponent>(currentMap))
+            return false; // On a z-level: TryEnterTransit — the stack knows its own gaps.
+
+        var grids = CollectGridSet(grid.Owner);
+
+        var transitMap = CreateTransitMap(targetLevel.Owner, null, grid.Owner);
+        var transit = Comp<CEZTransitMapComponent>(transitMap);
+        transit.ConvoyLead = true;
+        Dirty(transitMap, transit);
+
+        MoveGridSetToMap(grids, transitMap, -1, targetLevel.Comp.Depth);
+
+        foreach (var gridUid in grids)
+        {
+            var zPhys = EnsureComp<CEZPhysicsComponent>(gridUid);
+            SetZPosition((gridUid, zPhys), 1f);
+
+            // Everyone gets to watch, not just PVS neighbours.
+            _pvsOverride.AddGlobalOverride(gridUid);
+
+            // In transit = airborne: engines are live regardless of direction
+            // (parked ships are Static and need the re-enable to move at all).
+            _shuttle.Enable(gridUid);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Sets a transiting grid set's altitude in the z-network's depth coordinates:
     /// the integer part is a level, the fraction is the position in the gap above it
     /// (1.1 = a tenth of a gap above level 1). Absolute and idempotent — repeating the
@@ -850,7 +897,7 @@ public sealed partial class CEZLevelsSystem
         return true;
     }
 
-    private EntityUid CreateTransitMap(EntityUid lowerMap, EntityUid upperMap, EntityUid primaryGrid)
+    private EntityUid CreateTransitMap(EntityUid lowerMap, EntityUid? upperMap, EntityUid primaryGrid)
     {
         var mapUid = _map.CreateMap(out _);
 
@@ -866,9 +913,10 @@ public sealed partial class CEZLevelsSystem
             EntityManager.AddComponents(mapUid, network.Comp.Components, removeExisting: false);
 
         // Start lit like the upper level; the client lerps this toward the lower
-        // level's ambient as the grid descends.
+        // level's ambient as the grid descends. A null upper (descent from open
+        // space — nothing above the gap) falls through to the lower level's light.
         var light = EnsureComp<MapLightComponent>(mapUid);
-        if (TryComp<MapLightComponent>(upperMap, out var upperLight))
+        if (upperMap is { } upper && TryComp<MapLightComponent>(upper, out var upperLight))
             light.AmbientLightColor = upperLight.AmbientLightColor;
         else if (TryComp<MapLightComponent>(lowerMap, out var lowerLight))
             light.AmbientLightColor = lowerLight.AmbientLightColor;

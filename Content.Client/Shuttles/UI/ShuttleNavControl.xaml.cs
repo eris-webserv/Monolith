@@ -84,6 +84,10 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
     /// </summary>
     public Action<EntityCoordinates>? OnRadarClick;
 
+    public Action<EntityUid>? OnPlanetClick;
+
+    private readonly List<(EntityUid Uid, Vector2 Pos, float Radius)> _planetHitboxes = new();
+
     private List<Entity<MapGridComponent>> _grids = new();
 
     // Mono - set if we want this to detect not from itself
@@ -469,6 +473,12 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             return;
 
         _isMouseDown = false;
+
+        if (TryGetHoveredPlanet(args.RelativePosition, out var clickedPlanet))
+        {
+            OnPlanetClick?.Invoke(clickedPlanet);
+            return;
+        }
 
         var coords = GetMouseEntityCoordinates(args.RelativePosition);
         OnRadarClick?.Invoke(coords);
@@ -1189,6 +1199,8 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
     private void DrawPlanets(DrawingHandleScreen handle, MapId mapId, Vector2 mapPos, Matrix3x2 worldToView)
     {
+        _planetHitboxes.Clear();
+
         var blips = new List<BlipData>();
         var query = EntManager.AllEntityQueryEnumerator<CEPlanetComponent, TransformComponent>();
         while (query.MoveNext(out var uid, out var planet, out var pXform))
@@ -1209,6 +1221,7 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             var uiY = uiDistance > 0 ? uiYCentre * uiYOffset / uiDistance : 0;
 
             var isOutsideRadarCircle = uiDistance > Math.Abs(uiX) && uiDistance > Math.Abs(uiY);
+            float hitRadius;
             if (isOutsideRadarCircle)
             {
                 uiPosition = new Vector2(
@@ -1216,7 +1229,16 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
                     uiYCentre * uiYOffset / uiDistance * 0.95f + uiYCentre);
 
                 NfAddBlipToList(blips, true, uiPosition, uiXCentre, uiYCentre, color);
+                hitRadius = RadarBlipSize * 0.6f;
             }
+            else
+            {
+                hitRadius = MathF.Max(RadarBlipSize * 0.5f * planet.MaxScale, 6f);
+            }
+
+            _planetHitboxes.Add((uid, uiPosition, hitRadius));
+            var hovered = _isMouseInside && (_lastMousePos - uiPosition).Length() <= hitRadius;
+
             var labelOffsetY = RadarBlipSize * 0.5f + 2f;
             if (!isOutsideRadarCircle)
             {
@@ -1224,6 +1246,9 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
                 handle.DrawCircle(uiPosition * UIScale, radius, color);
                 labelOffsetY = radius / UIScale + 4f;
             }
+
+            if (hovered)
+                handle.DrawCircle(uiPosition * UIScale, (hitRadius + 3f) * UIScale, Color.White.WithAlpha(0.8f), false);
 
             if (!ShowIFF)
                 continue;
@@ -1234,10 +1259,25 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             var label = Loc.GetString("shuttle-console-iff-label", ("name", name), ("distance", displayedDistance));
             var labelDims = handle.GetDimensions(Font, label, 0.9f);
             var labelPos = uiPosition + new Vector2(-labelDims.X * 0.5f, labelOffsetY);
-            handle.DrawString(Font, labelPos * UIScale, label, UIScale * 0.9f, color);
+            handle.DrawString(Font, labelPos * UIScale, label, UIScale * 0.9f, hovered ? Color.White : color);
         }
 
         NfDrawBlips(handle, blips);
+    }
+
+    private bool TryGetHoveredPlanet(Vector2 relativePos, out EntityUid planet)
+    {
+        foreach (var (uid, pos, radius) in _planetHitboxes)
+        {
+            if ((relativePos - pos).Length() > radius)
+                continue;
+
+            planet = uid;
+            return true;
+        }
+
+        planet = default;
+        return false;
     }
 
     private void DrawShields(DrawingHandleScreen handle, TransformComponent consoleXform, Matrix3x2 matrix)

@@ -41,6 +41,8 @@ public sealed partial class NavScreen : BoxContainer
         DockToggle.OnToggled += OnDockTogglePressed;
         DockToggle.Pressed = NavRadar.ShowDocks;
 
+        NavRadar.OnPlanetClick += OnPlanetClicked; // CE
+
         NfInitialize(); // Frontier Initialization for the NavScreen
     }
 
@@ -95,6 +97,15 @@ public sealed partial class NavScreen : BoxContainer
     {
         _consoleEntity = console;
         NavRadar.SetConsole(console);
+    }
+
+    private void OnPlanetClicked(EntityUid planet)
+    {
+        if (!_entManager.TryGetComponent<MetaDataComponent>(planet, out var meta))
+            return;
+
+        _entManager.System<Content.Client.Popups.PopupSystem>()
+            .PopupCursor(Loc.GetString("ce-planet-clicked", ("planet", meta.EntityName)));
     }
 
     private void OnIFFTogglePressed(BaseButton.ButtonEventArgs args)

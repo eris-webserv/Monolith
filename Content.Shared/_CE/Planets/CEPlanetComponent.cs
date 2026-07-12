@@ -21,6 +21,7 @@ public sealed partial class CEPlanetComponent : Component
     /// The <c>CEZMapNetworkComponent</c> entity that forms this planet's descendable z-stack.
     /// Assigned at runtime (when the planet's surface is generated/linked), so it's networked.
     /// Null until the planet has a stack — it still renders in the sky, just isn't landable yet.
+    /// The descent sequence reads this to know where an approaching ship ends up.
     /// </summary>
     [DataField, AutoNetworkedField]
     public EntityUid? Network;

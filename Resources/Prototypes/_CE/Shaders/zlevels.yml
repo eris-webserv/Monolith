@@ -18,12 +18,19 @@
     FADE: 1.0
     CLOUD: 0.0
 
-# CrystallEdge: procedural cloud deck for CEZCloudLayer maps — opaque backdrop
-# under the layer's pass, wispy overlay on a rider climbing into the deck
-# (used by ScalingViewport.DrawCloudDeck)
+# cloud layer shader
 - type: shader
   id: CEZClouds
   kind: source
   path: "/Textures/_CE/Shaders/zclouds.swsl"
   params:
     COVERAGE: 1.0
+
+# planet descent-to-network shader
+- type: shader
+  id: CEZAscentClouds
+  kind: source
+  path: "/Textures/_CE/Shaders/zascent_clouds.swsl"
+  params:
+    COVERAGE: 1.0
+    SCROLL: 0.0

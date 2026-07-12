@@ -1,0 +1,95 @@
+blend_mode mix;
+
+uniform highp vec3 CLOUD_COLOR;
+// 0..1 cover envelope: low = a few discrete clouds sailing past, 1 = unbroken
+// opaque deck (also stands in for the pass clear, so it must stay solid).
+uniform highp float COVERAGE;
+// Screen-heights of cloud scrolled past by the climb so far. Zero when parked
+// (ambient wind only); during a transit ride positive SCROLL streams the
+// puffs DOWN the screen while the ship rises, negative streams them up on a
+// descent. Each parallax layer takes a different multiple of it.
+uniform highp float SCROLL;
+
+highp float hash(highp vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+highp float vnoise(highp vec2 p) {
+    highp vec2 i = floor(p);
+    highp vec2 f = fract(p);
+    highp vec2 u = f * f * (3.0 - 2.0 * f);
+    highp float a = hash(i);
+    highp float b = hash(i + vec2(1.0, 0.0));
+    highp float c = hash(i + vec2(0.0, 1.0));
+    highp float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+highp float fbm(highp vec2 p) {
+    highp float v = 0.0;
+    highp float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += a * vnoise(p);
+        p = p * 2.03 + vec2(19.7, 7.3);
+        a *= 0.5;
+    }
+    return v;
+}
+
+// One parallax stratum of rounded cumulus puffs. `scale` sets puff size
+// (smaller scale = bigger puffs), `par` the fraction of SCROLL this layer
+// rides (near layers move more — that differential is what sells the depth).
+highp float puffLayer(highp vec2 uv, highp float scale, highp float par, highp vec2 seed) {
+    highp vec2 wind = TIME * vec2(0.05, 0.015);
+    highp vec2 p = uv * scale + seed + wind * par
+        // Ascent streams cloud down-screen: FRAGCOORD.y grows downward, so a
+        // positive SCROLL must SUBTRACT from y to slide the field down.
+        - vec2(0.0, SCROLL * par * scale);
+    // Domain-warped base keeps blobs lumpy rather than ovoid.
+    return fbm(p + 1.1 * fbm(p * 0.55 + seed.yx));
+}
+
+void fragment() {
+    // Screen-space coords: rect draws bind the white pixel texture, so UV can't
+    // be trusted for noise. Scale both axes by 1/height for square cells.
+    highp vec2 uv = FRAGCOORD.xy * SCREEN_PIXEL_SIZE.y;
+
+    highp float cover = clamp(COVERAGE, 0.0, 1.0);
+
+    // Three strata, far to near: big slow background puffs, mid layer, and
+    // fast foreground blobs that whip past the hull.
+    highp float far  = puffLayer(uv, 4.5, 0.35, vec2(3.0, 71.0));
+    highp float mid  = puffLayer(uv, 2.6, 0.7,  vec2(29.0, 13.0));
+    highp float near = puffLayer(uv, 1.6, 1.3,  vec2(53.0, 5.0));
+
+    // Coverage widens each layer's threshold window instead of fading alpha:
+    // thin cover keeps gaps fully clear with a few discrete clouds crossing
+    // them, full cover bottoms the window out and the strata merge into an
+    // unbroken deck — the Space Age ascent read.
+    highp float th = mix(0.62, 0.18, cover);
+    highp float aFar  = smoothstep(th, th + 0.22, far);
+    highp float aMid  = smoothstep(th, th + 0.20, mid);
+    highp float aNear = smoothstep(th, th + 0.18, near);
+
+    // Composite near-over-mid-over-far. Far puffs sit dimmer (in the shadow
+    // of the layers above), near puffs brightest, so overlaps read as depth
+    // instead of one flat sheet.
+    highp float shadeFar  = mix(0.55, 0.85, smoothstep(th, th + 0.45, far));
+    highp float shadeMid  = mix(0.62, 1.0,  smoothstep(th, th + 0.4, mid));
+    highp float shadeNear = mix(0.7,  1.2,  smoothstep(th, th + 0.35, near));
+
+    highp float alpha = aFar;
+    highp float shade = shadeFar;
+    shade = mix(shade, shadeMid, aMid);
+    alpha = max(alpha, aMid);
+    shade = mix(shade, shadeNear, aNear);
+    alpha = max(alpha, aNear);
+
+    // Full cover must be fully opaque everywhere — it doubles as the pass
+    // clear; cloud texture lives in RGB.
+    if (cover >= 0.999) {
+        alpha = 1.0;
+    }
+
+    COLOR = vec4(CLOUD_COLOR * shade, alpha);
+}
