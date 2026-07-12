@@ -1,0 +1,28 @@
+- type: entity
+  id: CEPlanetBase
+  abstract: true
+  name: planet
+  description: Please check with your team and ensure that they remembered to set the base description for their planets.
+  components:
+  - type: Transform
+  - type: CEPlanet
+    sprite:
+      sprite: _CE/Planets/nauvis.rsi
+      state: planet
+
+- type: entity
+  parent: CEPlanetBase
+  id: CEPlanetNauvis
+  name: Nauvis
+  description: placeholder
+  components:
+  - type: CEPlanet
+    sprite:
+      sprite: _CE/Planets/nauvis.rsi
+      state: planet
+    spinRate: 0.02
+    zoneRadius: 16
+    approachRadius: 64
+    minScaleRadius: 512
+    minScale: 0.03
+    maxScale: 3

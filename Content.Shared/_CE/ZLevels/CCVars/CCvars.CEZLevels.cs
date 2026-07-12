@@ -49,4 +49,14 @@ public sealed partial class CCVars
 
     public static readonly CVarDef<int>
         CEZLevelsRenderingMaxZLevelsBelowRendering = CVarDef.Create("ce.zlevels.rendering.max_zLevels_below_rendering", 1, CVar.SERVER | CVar.REPLICATED);
+
+    /**
+     * Planets
+     */
+
+    /// <summary>
+    /// placeholder
+    /// </summary>
+    public static readonly CVarDef<bool>
+        CEPznEnablePlanetShuttleConsole = CVarDef.Create("ce.pzn.enableplanetshuttleconsole", true, CVar.SERVER | CVar.REPLICATED);
 }
