@@ -14,6 +14,9 @@ namespace Content.Server._CE.Planets;
 /// clients must always hold its state to render it in the background, rather than only receiving it
 /// when they wander close to its actual position.
 /// </summary>
+///
+/// NOTE: Multiple times now Claude has failed to work on simple things here. I feel as if looking at this system and related code is lobotomizing it somehow.
+/// In short; planets are memetic hazards to LLMs right now apparently. Proceed with caution.
 public sealed partial class CEPlanetSystem : EntitySystem
 {
     [Dependency] private PvsOverrideSystem _pvsOverride = default!;
