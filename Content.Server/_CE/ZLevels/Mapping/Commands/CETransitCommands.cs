@@ -25,6 +25,95 @@ public abstract partial class CEBaseTransitCommand : LocalizedEntityCommands
 {
     [Dependency] protected IEntityManager Entities = default!;
     [Dependency] protected CEZLevelsSystem ZLevel = default!;
+    [Dependency] protected IPrototypeManager Proto = default!;
+    [Dependency] protected MapLoaderSystem MapLoader = default!;
+    [Dependency] protected MetaDataSystem Meta = default!;
+    [Dependency] protected MapSystem Map = default!;
+
+    protected const string DefaultZMapId = "Grasslands";
+
+    /// <summary>
+    /// Loads every map of a <see cref="CEZLevelMapPrototype"/> into a fresh debug zNetwork and
+    /// freezes the light cycle at noon. Cleans up after itself on failure.
+    /// </summary>
+    protected bool TryLoadDebugStack(
+        IConsoleShell shell,
+        string zMapId,
+        out EntityUid network,
+        out Dictionary<int, Entity<MapComponent>> byDepth)
+    {
+        network = default;
+        byDepth = new Dictionary<int, Entity<MapComponent>>();
+
+        if (!Proto.Resolve<CEZLevelMapPrototype>(zMapId, out var zMapProto))
+        {
+            shell.WriteError($"Unknown CEZLevelMapPrototype {zMapId}");
+            return false;
+        }
+
+        var networkEnt = ZLevel.CreateMapNetwork(zMapProto.Components);
+        network = networkEnt;
+        Meta.SetEntityName(network, $"Debug zNetwork: {zMapId}");
+
+        var opts = new DeserializationOptions { InitializeMaps = true };
+
+        var maps = new Dictionary<EntityUid, int>();
+        var depth = 0;
+
+        foreach (var path in zMapProto.Maps)
+        {
+            if (!MapLoader.TryLoadMap(path, out var mapEnt, out _, opts))
+            {
+                shell.WriteError($"Failed to load zNetwork map (depth {depth}): {path}!");
+                CleanupStack(byDepth, network);
+                return false;
+            }
+
+            maps.Add(mapEnt.Value, depth);
+            byDepth[depth] = mapEnt.Value;
+            Meta.SetEntityName(mapEnt.Value, $"Debug {zMapId} [{depth}]");
+            depth++;
+        }
+
+        if (!ZLevel.TryAddMapsIntoNetwork(networkEnt, maps))
+        {
+            shell.WriteError("Failed to create zNetwork from loaded maps!");
+            CleanupStack(byDepth, network);
+            return false;
+        }
+
+        // i prefer being able to see don't you
+        foreach (var (mapUid, _) in maps)
+        {
+            if (!Entities.TryGetComponent<LightCycleComponent>(mapUid, out var cycle))
+                continue;
+
+            var noon = (float)(cycle.Duration.TotalSeconds / 2d);
+            var noonColor = SharedLightCycleSystem.GetColor((mapUid, cycle), cycle.OriginalColor, noon);
+
+            cycle.OriginalColor = noonColor;
+            cycle.Enabled = false;
+            Entities.Dirty(mapUid, cycle);
+
+            if (Entities.TryGetComponent<MapLightComponent>(mapUid, out var mapLight))
+            {
+                mapLight.AmbientLightColor = noonColor;
+                Entities.Dirty(mapUid, mapLight);
+            }
+        }
+
+        return true;
+    }
+
+    protected void CleanupStack(Dictionary<int, Entity<MapComponent>> byDepth, EntityUid network)
+    {
+        foreach (var (_, mapEnt) in byDepth)
+        {
+            Map.DeleteMap(mapEnt.Comp.MapId);
+        }
+
+        Entities.QueueDeleteEntity(network);
+    }
 
     protected bool TryGetGrid(IConsoleShell shell, string arg, out Entity<MapGridComponent> grid)
     {
@@ -136,16 +225,10 @@ public sealed class CETransitSetCommand : CEBaseTransitCommand
 [AdminCommand(AdminFlags.Server | AdminFlags.Mapping)]
 public sealed partial class CETransitDebugCommand : CEBaseTransitCommand
 {
-    [Dependency] private IPrototypeManager _proto = default!;
-    [Dependency] private MapLoaderSystem _mapLoader = default!;
-    [Dependency] private MetaDataSystem _meta = default!;
-    [Dependency] private MapSystem _map = default!;
-
     public override string Command => "cez-transit-debug";
     public override string Description =>
         "Loads in a testing map and spawns a shuttle for testing Z-levels.";
 
-    private const string DefaultZMapId = "Grasslands";
     private const int ShuttleDepth = 2;
     private static readonly ResPath DefaultShuttle = new("/SharedMaps/_Mono/Shuttles/bucket.yml");
 
@@ -154,7 +237,7 @@ public sealed partial class CETransitDebugCommand : CEBaseTransitCommand
         return args.Length switch
         {
             1 => CompletionResult.FromHintOptions(
-                CompletionHelper.PrototypeIDs<CEZLevelMapPrototype>(proto: _proto),
+                CompletionHelper.PrototypeIDs<CEZLevelMapPrototype>(proto: Proto),
                 "<zMap id>"),
             2 => CompletionResult.FromHint("<shuttle path>"),
             _ => CompletionResult.Empty,
@@ -172,62 +255,8 @@ public sealed partial class CETransitDebugCommand : CEBaseTransitCommand
         var zMapId = args.Length >= 1 ? args[0] : DefaultZMapId;
         var shuttlePath = args.Length == 2 ? new ResPath(args[1]) : DefaultShuttle;
 
-        if (!_proto.Resolve<CEZLevelMapPrototype>(zMapId, out var zMapProto))
-        {
-            shell.WriteError($"Unknown CEZLevelMapPrototype {zMapId}");
+        if (!TryLoadDebugStack(shell, zMapId, out _, out var byDepth))
             return;
-        }
-
-        var network = ZLevel.CreateMapNetwork(zMapProto.Components);
-        _meta.SetEntityName(network, $"Debug zNetwork: {zMapId}");
-
-        var opts = new DeserializationOptions { InitializeMaps = true };
-
-        var maps = new Dictionary<EntityUid, int>();
-        var byDepth = new Dictionary<int, Entity<MapComponent>>();
-        var depth = 0;
-
-        foreach (var path in zMapProto.Maps)
-        {
-            if (!_mapLoader.TryLoadMap(path, out var mapEnt, out _, opts))
-            {
-                shell.WriteError($"Failed to load zNetwork map (depth {depth}): {path}!");
-                Cleanup(byDepth, network);
-                return;
-            }
-
-            maps.Add(mapEnt.Value, depth);
-            byDepth[depth] = mapEnt.Value;
-            _meta.SetEntityName(mapEnt.Value, $"Debug {zMapId} [{depth}]");
-            depth++;
-        }
-
-        if (!ZLevel.TryAddMapsIntoNetwork(network, maps))
-        {
-            shell.WriteError("Failed to create zNetwork from loaded maps!");
-            Cleanup(byDepth, network);
-            return;
-        }
-
-        // i prefer being able to see don't you
-        foreach (var (mapUid, _) in maps)
-        {
-            if (!Entities.TryGetComponent<LightCycleComponent>(mapUid, out var cycle))
-                continue;
-
-            var noon = (float)(cycle.Duration.TotalSeconds / 2d);
-            var noonColor = SharedLightCycleSystem.GetColor((mapUid, cycle), cycle.OriginalColor, noon);
-
-            cycle.OriginalColor = noonColor;
-            cycle.Enabled = false;
-            Entities.Dirty(mapUid, cycle);
-
-            if (Entities.TryGetComponent<MapLightComponent>(mapUid, out var mapLight))
-            {
-                mapLight.AmbientLightColor = noonColor;
-                Entities.Dirty(mapUid, mapLight);
-            }
-        }
 
         // A test ship, delivered to the sky.
         if (!byDepth.TryGetValue(ShuttleDepth, out var shuttleMap))
@@ -236,7 +265,8 @@ public sealed partial class CETransitDebugCommand : CEBaseTransitCommand
             return;
         }
 
-        if (!_mapLoader.TryLoadGrid(shuttleMap.Comp.MapId, shuttlePath, out var shuttle, opts))
+        var opts = new DeserializationOptions { InitializeMaps = true };
+        if (!MapLoader.TryLoadGrid(shuttleMap.Comp.MapId, shuttlePath, out var shuttle, opts))
         {
             shell.WriteError($"Failed to load shuttle {shuttlePath}");
             return;
@@ -244,16 +274,6 @@ public sealed partial class CETransitDebugCommand : CEBaseTransitCommand
 
         var shuttleNet = Entities.GetNetEntity(shuttle.Value.Owner);
         shell.WriteLine($"Loaded {zMapId}; shuttle {shuttleNet} on layer {ShuttleDepth} (map {shuttleMap.Comp.MapId})");
-    }
-
-    private void Cleanup(Dictionary<int, Entity<MapComponent>> byDepth, EntityUid network)
-    {
-        foreach (var (_, mapEnt) in byDepth)
-        {
-            _map.DeleteMap(mapEnt.Comp.MapId);
-        }
-
-        Entities.QueueDeleteEntity(network);
     }
 }
 

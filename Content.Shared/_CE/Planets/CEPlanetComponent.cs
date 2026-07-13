@@ -77,4 +77,10 @@ public sealed partial class CEPlanetComponent : Component
     /// <summary>Colour of the zone-boundary ring drawn around the planet's coordinate.</summary>
     [DataField]
     public Color ZoneColor = Color.Cyan.WithAlpha(0.35f);
+
+    /// <summary>
+    /// Colour of the planet clouds when descending.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public Color VeilColor = new(0.85f, 0.87f, 0.92f);
 }
