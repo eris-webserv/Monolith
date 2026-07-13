@@ -7,6 +7,7 @@ using System.Numerics;
 using Content.Client.Parallax;
 using Content.Client.Viewport;
 using Content.Shared._CE.Planets;
+using Content.Shared._CE.Planets.Descent;
 using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Robust.Client.GameObjects;
@@ -34,6 +35,7 @@ public sealed partial class CEPlanetOverlay : Overlay
     private readonly SpriteSystem _sprite;
     private readonly SharedTransformSystem _transform;
     private readonly CESharedZLevelsSystem _zLevel;
+    private readonly CESharedDescentSystem _descent;
 
     // Planets are distant sky bodies, not lit surfaces — draw them fullbright so the world's
     // lighting/darkness never dims them (same reason the parallax skybox is unshaded).
@@ -49,6 +51,7 @@ public sealed partial class CEPlanetOverlay : Overlay
         _sprite = _entManager.System<SpriteSystem>();
         _transform = _entManager.System<SharedTransformSystem>();
         _zLevel = _entManager.System<CESharedZLevelsSystem>();
+        _descent = _entManager.System<CESharedDescentSystem>();
         _unshaded = IoCManager.Resolve<IPrototypeManager>().Index<ShaderPrototype>("unshaded").Instance();
     }
 
@@ -218,6 +221,25 @@ public sealed partial class CEPlanetOverlay : Overlay
             var angle = new Angle(time * planet.SpinRate);
             var box = Box2.CenteredAround(drawPos, size);
             handle.DrawTextureRect(tex, new Box2Rotated(box, angle, drawPos));
+        }
+
+        // Descent pseudo-map: the ship is falling toward a planet that lives on ANOTHER
+        // map, so the same-map query above can't see it. The pseudo-map carries a
+        // snapshot of the planet's render fields instead — drawn screen-centred, the
+        // same way a t = 0 zone planet is. Descent can only begin inside the zone,
+        // where the planet was already centred at MaxScale, so the map swap is
+        // seamless. It then swells slightly as the ship sinks, selling the fall until
+        // the whiteout takes over.
+        if (_entManager.TryGetComponent(args.MapUid, out CEDescentMapComponent? descent) &&
+            descent.PlanetSprite is { } snapshot)
+        {
+            var tex = _sprite.Frame0(snapshot);
+            var swell = 1f + 0.15f * _descent.GetDescentDepth(descent);
+            var size = tex.Size / (float) EyeManager.PixelsPerMeter * descent.PlanetScale * swell;
+
+            var angle = new Angle(time * descent.PlanetSpinRate);
+            var box = Box2.CenteredAround(worldCentre, size);
+            handle.DrawTextureRect(tex, new Box2Rotated(box, angle, worldCentre));
         }
 
         handle.UseShader(null);

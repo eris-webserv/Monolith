@@ -522,6 +522,61 @@ public sealed partial class CEZLevelsSystem
     }
 
     /// <summary>
+    /// How far an arriving set should coast down from its open-sky entry point at the
+    /// top of the gap (progress 1) before stopping: just inside the settle zone over
+    /// the level below, so the approach profile takes over and lands it.
+    /// </summary>
+    private const float ArrivalCoastDistance = 0.85f;
+
+    /// <summary>
+    /// Inserts a docked set into transit directly above <paramref name="topLevel"/> — the
+    /// entry point for arrivals from OUTSIDE the z machinery (planet descent from orbit).
+    /// The set appears at the very top of the gap over the network's top level with open
+    /// sky above it (UpperMap = null), and descends through the normal transit flow from
+    /// there. World positions are taken as-is: callers re-anchor the set into the target
+    /// stack's coordinate space before calling.
+    /// </summary>
+    public bool InsertSetIntoTransitAbove(EntityUid primaryGrid, HashSet<EntityUid> grids, EntityUid topLevel)
+    {
+        if (!TryComp<CEZMapComponent>(topLevel, out var topZ))
+            return false;
+
+        var transitMap = CreateTransitMap(topLevel, null, primaryGrid);
+        var transit = Comp<CEZTransitMapComponent>(transitMap);
+        transit.ConvoyLead = true;
+        Dirty(transitMap, transit);
+
+        // offset -1 / anchor depth mirror TryEnterTransit's descending plan, so
+        // passenger z caches update to the gap over the anchor level.
+        MoveGridSetToMap(grids, transitMap, -1, topZ.Depth);
+
+        // With open sky above there's no upper plane to settle against, so a gravgen'd
+        // set's hover easing (target 0) would park it at the seam forever. Seed enough
+        // fall speed to coast into the settle zone over the level below, where the
+        // normal approach profile brakes the drop and lands it. Sized against the
+        // set's own damping so heavy and overbuilt ships stop in the same place.
+        var damp = MathF.Max(GetVerticalThrustAccel(primaryGrid), HoverDampAccel);
+        var dropSpeed = MathF.Sqrt(2f * damp * ArrivalCoastDistance);
+
+        foreach (var gridUid in grids)
+        {
+            var zPhys = EnsureComp<CEZPhysicsComponent>(gridUid);
+            SetZPosition((gridUid, zPhys), 1f);
+
+            var faller = EnsureComp<CEZGridFallerComponent>(gridUid);
+            faller.Velocity = MathF.Min(dropSpeed, faller.GridTerminalVelocity);
+
+            // Everyone gets to watch, not just PVS neighbours.
+            _pvsOverride.AddGlobalOverride(gridUid);
+
+            // In transit = airborne: engines are live regardless of direction.
+            _shuttle.Enable(gridUid);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Sets a transiting grid set's altitude in the z-network's depth coordinates:
     /// the integer part is a level, the fraction is the position in the gap above it
     /// (1.1 = a tenth of a gap above level 1). Absolute and idempotent — repeating the
