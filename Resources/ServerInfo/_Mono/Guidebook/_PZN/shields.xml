@@ -1,0 +1,24 @@
+<Document>
+  # Shield Generators
+
+  Shield generators get a few new uses on planets; as well as an entirely new class...
+
+  <Box>
+    <GuideEntityEmbed Entity="ShieldGeneratorSmall" Caption="A typical shield generator"/>
+    <GuideEntityEmbed Entity="ShieldGeneratorPOI" Caption="[PLACEHOLDER]"/>
+  </Box>
+
+  ## Shuttles
+
+  As a quick refresher; when your shuttle is over the mass capacity that your gravity generators can counteract, you will plummet.
+
+  However, all shield generators in the Colossus sector are programmed with an emergency sequence in case of ground collisons of this class.
+  When hitting the ground, your shield generator will atempt to take the impact in the same manner as a bullet; if this succeeds, you will safely land without issue.
+
+  In the event that your shield generator is unable to handle the full load, it will still take the impact; however, the overclock required to take the sudden hit will [italic][color=red]entirely disable your shields.[/color][/italic]
+  If this happens, priority should be restoring ship power to your gravity generators and allowing your shields time to fully respool.
+
+  ## Planets
+
+  [bold][color=orange]ERROR: Atempted to read protected memory at 0xDEADBEEF[/color][/bold]
+</Document>

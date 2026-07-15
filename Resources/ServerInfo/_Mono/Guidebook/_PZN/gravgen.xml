@@ -1,0 +1,20 @@
+<Document>
+  # Gravity Generators
+
+  You may be wondering how keeping your ship from violently crashing onto the ground of a planet works. This is thanks to your ship's existing gravity generator.
+
+  <Box>
+    <GuideEntityEmbed Entity="GravityGeneratorMini"/>
+  </Box>
+
+  Your gravity generator has a certain amount of mass capacity that it can handle before your shuttle will plummet in orbit.
+  The current mass load of your grid, as well as the per-generator limit can be seen by simply examining your gravity generator.
+
+  [bold][color=orange]If your generators are running over 100% of their capacity, your shuttle WILL plummet in orbit![/color][/bold]
+  This can be prevented by adding more gravity generators, or upgrading your existing ones.
+
+  Gravity generators only contribute to mass capacity while online as well; ensure you have a stable power supply.
+
+  In a worst-case scenario, if you have a shield generator on your ship, it can take the ground collision to keep your ship together; however, this will disrupt it significantly and require a multiple-minute respool time.
+  You can read more about shields themselves in the respective guide entry.
+</Document>

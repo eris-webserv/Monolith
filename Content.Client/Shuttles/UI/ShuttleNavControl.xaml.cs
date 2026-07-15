@@ -104,8 +104,9 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
     // CE: off-layer radar. Grids on maps vertically adjacent to ours (neighbouring
     // z-levels and transit gaps) are drawn ghosted, with an arrow on the distance value.
-    private const float OffLayerAlpha = 0.45f; // alpha multiplier at exactly one level of separation
-    private const float MinOffLayerAlpha = 0.12f; // distant contacts stay at least this visible
+    // Contacts fade linearly with vertical separation: 0.5 levels off = half
+    // transparent, a full level (or more) of separation = invisible.
+    private const float OffLayerFadeEpsilon = 0.02f; // don't bother drawing below this alpha
     private readonly List<(EntityUid MapUid, int Dir)> _adjacentZMaps = new();
     private List<Entity<MapGridComponent>> _offLayerGrids = new();
     private readonly List<(Entity<MapGridComponent> Grid, int ZDir)> _drawGrids = new();
@@ -801,14 +802,18 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             var labelColor = hideColor ? blipOnly ? Color.Orange : Color.White : _shuttles.GetIFFColor(grid, self: false, iff);
 
             // CE: ghost anything that isn't on our layer so it's obviously not
-            // co-planar, fading with the actual vertical separation: a ship mid-transit
-            // (or climbing within its level) is brighter than one a full level away,
-            // and two levels away is dimmer still.
+            // co-planar, fading linearly with the actual vertical separation: half a
+            // level off = half transparent, a full level (or more) off = invisible.
+            // Adjacent-level contacts thus only appear while mid-transit rides (ours
+            // or theirs) close the gap below one level.
             var offLayerAlpha = 1f;
             if (zDir != 0)
             {
                 var zDist = MathF.Abs(_zLevels.GetAbsoluteAltitude(gUid) - ourAltitude);
-                offLayerAlpha = Math.Clamp(MathF.Pow(OffLayerAlpha, zDist), MinOffLayerAlpha, 1f);
+                offLayerAlpha = Math.Clamp(1f - zDist, 0f, 1f);
+                if (offLayerAlpha < OffLayerFadeEpsilon)
+                    continue;
+
                 labelColor = labelColor.WithAlpha(labelColor.A * offLayerAlpha);
             }
 

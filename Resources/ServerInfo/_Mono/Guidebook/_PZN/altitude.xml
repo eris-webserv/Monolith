@@ -1,0 +1,16 @@
+<Document>
+  # Altitude
+
+  A recently-pushed update to shuttle consoles has caused the concept of "the sky" to become something pilots must worry about on planets.
+
+  <Box>
+    <GuideEntityEmbed Entity="ComputerShuttle"/>
+  </Box>
+
+  When on a planet, a few new values will appear on your shuttle console; namely, your heave velocity (vertical velocity, in layman's terms), and your current altitude.
+
+  In order to move up and down levels, the default keys are [color=green]R[/color] and [color=green]F[/color] respectively.
+
+  Mind that while flying between levels, you can crash into a shuttle between you and where you're falling.
+  [italic][color=red]This will lead to you and whoever you're hitting having a you-sized hole in their hull.[/color][/italic]
+</Document>
