@@ -26,3 +26,4 @@
     minScaleRadius: 512
     minScale: 0.03
     maxScale: 3
+    landingRadius: 200

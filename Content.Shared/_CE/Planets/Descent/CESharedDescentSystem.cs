@@ -3,7 +3,11 @@
  * https://github.com/space-wizards/space-station-14/blob/master/LICENSE.TXT
  */
 
+using Content.Shared._CE.Planets;
+using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
+using Content.Shared.Popups;
+using Robust.Shared.Map.Components;
 using Robust.Shared.Timing;
 
 namespace Content.Shared._CE.Planets.Descent;
@@ -17,6 +21,8 @@ namespace Content.Shared._CE.Planets.Descent;
 public abstract partial class CESharedDescentSystem : EntitySystem
 {
     [Dependency] protected IGameTiming Timing = default!;
+    [Dependency] private readonly SharedTransformSystem _xform = default!;
+    [Dependency] private readonly SharedPopupSystem _popup = default!;
 
     // Stage 2 (the warp) is the Vanishing → Arriving
     // transition itself: one tick, no duration entry. There is no chargeup entry
@@ -32,6 +38,101 @@ public abstract partial class CESharedDescentSystem : EntitySystem
     public static readonly TimeSpan DescendTime = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan VanishTime = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan ArriveTime = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long the console spinup theatre runs before the descent proper begins.</summary>
+    public static readonly TimeSpan SpinupTime = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How long the drive respools after a mid-charge discharge (an engine damaged
+    /// during spinup) before another descent can be requested.
+    /// </summary>
+    public static readonly TimeSpan DriveRespoolTime = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// How long the discharge itself lasts: everyone aboard is paralyzed for this long,
+    /// and the client's radial screenshake tapers off over the same window.
+    /// </summary>
+    public static readonly TimeSpan DischargeStunTime = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// A pilot confirmed a descent on the shuttle console. Runs on both sides of the
+    /// predicted <see cref="CEDescentRequestMessage"/> (each side subscribes with its
+    /// own console component type), so the spinup ring and any refusal popup land the
+    /// instant the pilot clicks instead of a server round-trip later.
+    /// </summary>
+    protected void OnDescentRequest(EntityUid uid, CEDescentRequestMessage args)
+    {
+        if (Transform(uid).GridUid is not { } gridUid)
+            return;
+
+        if (!TryBeginDescent(gridUid, GetEntity(args.Planet), out var denyReason) && denyReason != null)
+            _popup.PopupClient(Loc.GetString(denyReason), uid, args.Actor);
+    }
+
+    /// <summary>
+    /// Validates a descent request and starts the console spinup theatre on
+    /// <paramref name="gridUid"/> toward <paramref name="planetUid"/>: the grid gets a
+    /// <see cref="CEDescentSpinupComponent"/> and the server hands over to the descent
+    /// proper when its clock elapses. Shared so the validation (and the spinup state the
+    /// console UI counts down from) lives in one place; only networked components are
+    /// touched.
+    /// </summary>
+    /// <param name="denyReason">
+    /// Loc id explaining a player-facing refusal (wrong map, out of range, no landable network), or
+    /// null when the request was silently ignored (already descending, bad arguments).
+    /// </param>
+    public bool TryBeginDescent(EntityUid gridUid, EntityUid planetUid, out string? denyReason)
+    {
+        denyReason = null;
+
+        if (!HasComp<MapGridComponent>(gridUid))
+            return false;
+
+        // Already spinning up or mid-descent — ignore.
+        if (HasComp<CEDescentSpinupComponent>(gridUid) || HasComp<CEDescentComponent>(gridUid))
+            return false;
+
+        // Drive discharged mid-charge: it has to respool before another attempt.
+        if (HasComp<CEDescentStunnedComponent>(gridUid))
+        {
+            denyReason = "ce-descent-request-respooling";
+            return false;
+        }
+
+        if (!TryComp<CEPlanetComponent>(planetUid, out var planet))
+            return false;
+
+        // Must share a map with the planet; no descents from mid-gap or pseudo-maps.
+        if (Transform(gridUid).MapUid is not { } mapUid
+            || Transform(planetUid).MapUid != mapUid
+            || HasComp<CEZTransitMapComponent>(mapUid)
+            || HasComp<CEDescentMapComponent>(mapUid))
+        {
+            denyReason = "ce-descent-request-denied";
+            return false;
+        }
+
+        // Must be parked inside the planet's zone band — the same radius the nav
+        // screen draws — so no cross-map descent sniping from a distant blip.
+        if ((_xform.GetWorldPosition(gridUid) - _xform.GetWorldPosition(planetUid)).Length() > planet.ZoneRadius)
+        {
+            denyReason = "ce-descent-request-out-of-range";
+            return false;
+        }
+
+        if (planet.Network is not { } networkUid || !HasComp<CEZMapNetworkComponent>(networkUid))
+        {
+            denyReason = "ce-descent-request-no-network";
+            return false;
+        }
+
+        var spinup = AddComp<CEDescentSpinupComponent>(gridUid);
+        spinup.Planet = planetUid;
+        spinup.Start = Timing.CurTime;
+        spinup.End = Timing.CurTime + SpinupTime;
+        Dirty(gridUid, spinup);
+        return true;
+    }
 
     public static TimeSpan StageDuration(CEDescentStage stage)
     {

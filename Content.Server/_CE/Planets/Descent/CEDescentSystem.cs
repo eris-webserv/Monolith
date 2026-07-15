@@ -9,12 +9,18 @@ using Content.Server.Shuttles.Systems;
 using Content.Shared._CE.Planets;
 using Content.Shared._CE.Planets.Descent;
 using Content.Shared._CE.ZLevels.Core.Components;
+using Content.Shared.Damage;
+using Content.Shared.Mobs.Components;
 using Content.Shared.Parallax;
+using Content.Shared.Stunnable;
+using Content.Server.Shuttles.Components;
+using Content.Shared.Shuttles.Components;
 using Robust.Server.GameStates;
 using Robust.Shared.Map;
 using Robust.Shared.Map.Components;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Physics.Systems;
+using Robust.Shared.Random;
 
 namespace Content.Server._CE.Planets.Descent;
 
@@ -40,15 +46,116 @@ public sealed class CEDescentSystem : CESharedDescentSystem
     [Dependency] private readonly ShuttleSystem _shuttle = default!;
     [Dependency] private readonly ShuttleConsoleSystem _console = default!;
     [Dependency] private readonly DockingSystem _dockSystem = default!;
+    [Dependency] private readonly ThrusterSystem _thruster = default!;
     [Dependency] private readonly PvsOverrideSystem _pvsOverride = default!;
     [Dependency] private readonly CEZLevelsSystem _zLevels = default!;
-
+    [Dependency] private readonly SharedStunSystem _stun = default!;
+    [Dependency] private readonly IRobustRandom _random = default!;
     public override void Initialize()
     {
         base.Initialize();
 
         SubscribeLocalEvent<CEDescentComponent, ComponentShutdown>(OnDescentShutdown);
+        SubscribeLocalEvent<CEDescentSpinupComponent, ComponentStartup>(OnSpinupStartup);
+        SubscribeLocalEvent<CEDescentSpinupComponent, ComponentShutdown>(OnSpinupShutdown);
+        SubscribeLocalEvent<CEDescentStunnedComponent, ComponentShutdown>(OnStunnedShutdown);
+        SubscribeLocalEvent<ShuttleConsoleComponent, CEDescentRequestMessage>(OnDescentRequest);
+        SubscribeLocalEvent<ThrusterComponent, DamageChangedEvent>(OnThrusterDamaged);
     }
+
+    /// <summary>
+    /// The drive swapped to charging: kick everything docked off the grid, same as
+    /// expedition FTL (<see cref="DockingSystem.UndockDocks"/>). A charging grid
+    /// always flies solo, so the brake, the discharge stun and the descent handoff
+    /// never have to reason about a docked chain.
+    /// </summary>
+    private void OnSpinupStartup(Entity<CEDescentSpinupComponent> ent, ref ComponentStartup args)
+    {
+        _dockSystem.UndockDocks(ent.Owner);
+    }
+
+    /// <summary>
+    /// An engine took a hit. If the charging grid owns it, the charge aborts
+    /// violently: the spinup is stripped, the drive is stunned into a respool and the
+    /// grid stays pilot-locked with cold thrusters until it ends (see
+    /// <see cref="AbortCharge"/>).
+    /// </summary>
+    private void OnThrusterDamaged(Entity<ThrusterComponent> ent, ref DamageChangedEvent args)
+    {
+        // Only actual damage matters — healing a thruster mid-charge is fine.
+        if (!args.DamageIncreased || args.DamageDelta == null)
+            return;
+
+        // A wrecked, switched-off engine taking further hits isn't news to the drive.
+        if (!ent.Comp.Enabled)
+            return;
+
+        if (Transform(ent).GridUid is not { } thrusterGrid)
+            return;
+
+        // Charging grids fly solo (everything undocks at spinup start), so only the
+        // charging grid's own engines matter.
+        if (HasComp<CEDescentSpinupComponent>(thrusterGrid))
+            AbortCharge(thrusterGrid);
+    }
+
+    /// <summary>
+    /// Kills a running charge and discharges the drive violently. The grid gets a
+    /// <see cref="CEDescentStunnedComponent"/> blocking re-requests until
+    /// <see cref="CESharedDescentSystem.DriveRespoolTime"/> elapses (and driving
+    /// the client shake/buzz + the console's red countdown), and everyone aboard is
+    /// knocked flat for <see cref="CESharedDescentSystem.DischargeStunTime"/>.
+    /// The ship stays dead in space for the whole respool: the stun takes over the
+    /// spinup's pilot lock (so the spinup's shutdown doesn't hand it back early)
+    /// and <see cref="Update"/> keeps the thrusters/gyros forced cold.
+    /// Only the charging grid itself is hit — everything docked was already kicked
+    /// off when the charge began (<see cref="OnSpinupStartup"/>).
+    /// </summary>
+    public void AbortCharge(EntityUid uid)
+    {
+        if (!TryComp<CEDescentSpinupComponent>(uid, out var spinup))
+            return;
+
+        if (!TerminatingOrDeleted(uid))
+        {
+            var stunned = EnsureComp<CEDescentStunnedComponent>(uid);
+            stunned.Start = Timing.CurTime;
+            stunned.End = Timing.CurTime + DriveRespoolTime;
+            Dirty(uid, stunned);
+
+            // Keep the grid pilot-locked for the respool: adopt the lock the spinup
+            // added (removing it from the spinup's set BEFORE the spinup is stripped,
+            // so its shutdown doesn't return it), or add our own if the grid somehow
+            // wasn't locked yet. Grids locked by someone else (e.g. arrivals) are
+            // left alone — their owner returns the lock, not us.
+            if (spinup.PilotLocked.Remove(uid))
+                stunned.PilotLocked = true;
+            else if (!HasComp<PreventPilotComponent>(uid))
+            {
+                AddComp<PreventPilotComponent>(uid);
+                stunned.PilotLocked = true;
+            }
+        }
+
+        RemComp<CEDescentSpinupComponent>(uid);
+
+        // Everyone standing on the grid gets thrown off their feet.
+        var mobs = EntityQueryEnumerator<MobStateComponent, TransformComponent>();
+        while (mobs.MoveNext(out var mobUid, out _, out var xform))
+        {
+            if (xform.GridUid == uid)
+                _stun.TryParalyze(mobUid, DischargeStunTime, true);
+        }
+    }
+
+    /// <summary>
+    /// A pilot confirmed a descent on the shuttle console. Validation, spinup start and
+    /// the refusal popup live in the shared, predicted handler (the client runs the same
+    /// code the moment the pilot clicks); the descent proper starts when the spinup
+    /// elapses (see <see cref="Update"/>).
+    /// </summary>
+    private void OnDescentRequest(EntityUid uid, ShuttleConsoleComponent component, CEDescentRequestMessage args)
+        => OnDescentRequest(uid, args);
 
     /// <summary>
     /// Starts the descent sequence for <paramref name="grid"/> onto
@@ -108,6 +215,44 @@ public sealed class CEDescentSystem : CESharedDescentSystem
     public override void Update(float frameTime)
     {
         base.Update(frameTime);
+
+        // Console spinup theatre → hand over to the descent proper once it elapses.
+        var spinups = EntityQueryEnumerator<CEDescentSpinupComponent, MapGridComponent>();
+        while (spinups.MoveNext(out var uid, out var spinup, out var grid))
+        {
+            // Engines charging: the ship is committed, so hold it still — pilot input
+            // locked out, thrusters cold, and any residual drift braked hard to zero.
+            ChargingBrake(uid, spinup, frameTime);
+
+            if (Timing.CurTime < spinup.End)
+                continue;
+
+            var planetUid = spinup.Planet;
+            RemCompDeferred<CEDescentSpinupComponent>(uid);
+
+            if (TryComp<CEPlanetComponent>(planetUid, out var planet))
+                TryStartDescent((uid, grid), (planetUid, planet));
+        }
+
+        // Respool stuns tick down and clear themselves. Until they do, the drive is
+        // dead: pilot input is locked (PreventPilot, owned by the stun) and the
+        // thrusters/gyros are re-forced cold every tick in case anything — mapping
+        // tools, other systems, a docked console — switched them back on.
+        var stunnedQuery = EntityQueryEnumerator<CEDescentStunnedComponent>();
+        while (stunnedQuery.MoveNext(out var uid, out var stunned))
+        {
+            if (Timing.CurTime >= stunned.End)
+            {
+                RemCompDeferred<CEDescentStunnedComponent>(uid);
+                continue;
+            }
+
+            if (TryComp<ShuttleComponent>(uid, out var shuttle))
+            {
+                _thruster.DisableLinearThrusters(shuttle);
+                _thruster.SetAngularThrust(shuttle, false);
+            }
+        }
 
         var query = EntityQueryEnumerator<CEDescentComponent>();
         while (query.MoveNext(out var uid, out var descent))
@@ -231,10 +376,10 @@ public sealed class CEDescentSystem : CESharedDescentSystem
         }
 
         // Re-anchor: origin-map (deep space) coordinates mean nothing in the planet's
-        // z-stack. Keep the set's relative layout, centre the lead grid over the stack
-        // origin — done on the pseudo-map, where there's nothing to collide with.
-        // TODO(descent): designated arrival zones instead of 0,0.
-        RecenterSetOn(ent.Comp.GridSet, ent.Owner, Vector2.Zero);
+        // z-stack. Keep the set's relative layout, drop the lead grid at a random point
+        // inside the planet's landing area — done on the pseudo-map, where there's
+        // nothing to collide with.
+        RecenterSetOn(ent.Comp.GridSet, ent.Owner, PickLandingPoint(ent));
 
         if (!_zLevels.InsertSetIntoTransitAbove(ent.Owner, ent.Comp.GridSet, topMap.Value))
         {
@@ -244,6 +389,25 @@ public sealed class CEDescentSystem : CESharedDescentSystem
 
         DeleteDescentMap(ent);
         SetStage(ent, CEDescentStage.Arriving);
+    }
+
+    /// <summary>
+    /// Where the set comes out of the warp: a random point inside the planet's landing
+    /// disc (uniform over the area, not the radius), or the stack origin when the planet
+    /// has no landing radius. The point is rolled fresh per descent, so consecutive
+    /// arrivals scatter instead of stacking on 0,0.
+    /// </summary>
+    private Vector2 PickLandingPoint(Entity<CEDescentComponent> ent)
+    {
+        if (!TryComp<CEPlanetComponent>(ent.Comp.Planet, out var planet) ||
+            planet.LandingRadius <= 0f)
+        {
+            return Vector2.Zero;
+        }
+
+        // sqrt for a uniform distribution over the disc rather than clustering at the centre.
+        var distance = planet.LandingRadius * MathF.Sqrt(_random.NextFloat());
+        return _random.NextAngle().ToVec() * distance;
     }
 
     /// <summary>
@@ -381,5 +545,70 @@ public sealed class CEDescentSystem : CESharedDescentSystem
     {
         if (ent.Comp.DescentMap is { } map && !TerminatingOrDeleted(map))
             QueueDel(map);
+    }
+
+    /// <summary>
+    /// While the engines are charging (spinup), the ship is committed: pilot input is
+    /// locked out, thrusters are forced cold and any residual velocity is rapidly
+    /// braked to a standstill so the descent starts from a clean, stationary pose.
+    /// Only the charging grid itself — anything docked was undocked at spinup start.
+    /// </summary>
+    private void ChargingBrake(EntityUid uid, CEDescentSpinupComponent spinup, float frameTime)
+    {
+        // Lock out piloting — but only remember grids WE locked, so a grid that
+        // was already pilot-locked (e.g. arrivals) keeps its lock afterwards.
+        if (!HasComp<PreventPilotComponent>(uid) && spinup.PilotLocked.Add(uid))
+            AddComp<PreventPilotComponent>(uid);
+
+        if (TryComp<ShuttleComponent>(uid, out var shuttle))
+        {
+            _thruster.DisableLinearThrusters(shuttle);
+            _thruster.SetAngularThrust(shuttle, false);
+        }
+
+        if (!TryComp<PhysicsComponent>(uid, out var body))
+            return;
+
+        // Exponential brake: ~99.9% of the velocity is gone within half a second.
+        var damp = MathF.Pow(1e-6f, frameTime);
+
+        var linVel = body.LinearVelocity * damp;
+        var angVel = body.AngularVelocity * damp;
+
+        // Snap the tail to a hard zero instead of chasing denormals.
+        if (linVel.LengthSquared() < 0.01f)
+            linVel = Vector2.Zero;
+        if (MathF.Abs(angVel) < 0.01f)
+            angVel = 0f;
+
+        if (linVel != body.LinearVelocity)
+            _physics.SetLinearVelocity(uid, linVel, body: body);
+        if (angVel != body.AngularVelocity)
+            _physics.SetAngularVelocity(uid, angVel, body: body);
+    }
+
+    /// <summary>
+    /// Spinup over (descent started, console-aborted or grid deleted): give back the
+    /// pilot locks we added during <see cref="ChargingBrake"/>.
+    /// </summary>
+    private void OnSpinupShutdown(Entity<CEDescentSpinupComponent> ent, ref ComponentShutdown args)
+    {
+        foreach (var member in ent.Comp.PilotLocked)
+        {
+            if (!TerminatingOrDeleted(member))
+                RemCompDeferred<PreventPilotComponent>(member);
+        }
+
+        ent.Comp.PilotLocked.Clear();
+    }
+
+    /// <summary>
+    /// Respool over (timer elapsed or grid deleted): hand back the pilot lock the stun
+    /// owned, if any (see <see cref="CEDescentStunnedComponent.PilotLocked"/>).
+    /// </summary>
+    private void OnStunnedShutdown(Entity<CEDescentStunnedComponent> ent, ref ComponentShutdown args)
+    {
+        if (ent.Comp.PilotLocked && !TerminatingOrDeleted(ent.Owner))
+            RemCompDeferred<PreventPilotComponent>(ent.Owner);
     }
 }
