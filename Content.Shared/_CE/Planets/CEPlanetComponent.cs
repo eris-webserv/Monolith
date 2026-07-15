@@ -83,4 +83,12 @@ public sealed partial class CEPlanetComponent : Component
     /// </summary>
     [DataField, AutoNetworkedField]
     public Color VeilColor = new(0.85f, 0.87f, 0.92f);
+
+    /// <summary>
+    /// Radius (in tiles, around 0,0 of the surface levels) within which descending ships
+    /// are dropped. The descent picks a random point inside this disc when it warps the
+    /// set into the planet's z-stack; 0 means everyone arrives exactly at the origin.
+    /// </summary>
+    [DataField]
+    public float LandingRadius;
 }
