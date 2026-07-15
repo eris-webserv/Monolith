@@ -3,6 +3,8 @@ using System.Numerics;
 using Content.Client._Mono.Radar;
 using Content.Client.Station; // Frontier
 using Content.Shared._CE.Planets;
+using Content.Shared._CE.Planets.Descent;
+using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Content.Shared._Crescent.ShipShields;
 using Content.Shared._Mono.Company;
 using Content.Shared._Mono.Detection;
@@ -38,6 +40,7 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
     private readonly SharedShuttleSystem _shuttles;
     private readonly SharedTransformSystem _transform;
     private readonly RadarBlipsSystem _blips;
+    private readonly CESharedZLevelsSystem _zLevels; // CE
 
     /// <summary>
     /// Used to transform all of the radar objects. Typically is a shuttle console parented to a grid.
@@ -86,9 +89,26 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
     public Action<EntityUid>? OnPlanetClick;
 
-    private readonly List<(EntityUid Uid, Vector2 Pos, float Radius)> _planetHitboxes = new();
+    private readonly List<(EntityUid Uid, Vector2 Pos, float Radius, bool InRange)> _planetHitboxes = new();
+
+    // CE: hold-to-descend targeting. The pilot must hold the click on a planet for
+    // PlanetHoldSeconds before the descend request fires; releasing early cancels.
+    public const float PlanetHoldSeconds = 1f;
+    private EntityUid? _holdPlanet;
+    private TimeSpan _holdStart;
+
+    /// <summary>CE: seconds left on the hold-to-target countdown, null when not targeting.</summary>
+    public float? TargetingRemaining { get; private set; }
 
     private List<Entity<MapGridComponent>> _grids = new();
+
+    // CE: off-layer radar. Grids on maps vertically adjacent to ours (neighbouring
+    // z-levels and transit gaps) are drawn ghosted, with an arrow on the distance value.
+    private const float OffLayerAlpha = 0.45f; // alpha multiplier at exactly one level of separation
+    private const float MinOffLayerAlpha = 0.12f; // distant contacts stay at least this visible
+    private readonly List<(EntityUid MapUid, int Dir)> _adjacentZMaps = new();
+    private List<Entity<MapGridComponent>> _offLayerGrids = new();
+    private readonly List<(Entity<MapGridComponent> Grid, int ZDir)> _drawGrids = new();
 
     // Mono - set if we want this to detect not from itself
     public List<EntityUid>? Detectors = null;
@@ -136,6 +156,7 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         _transform = EntManager.System<SharedTransformSystem>();
         _station = EntManager.System<StationSystem>(); // Frontier
         _blips = EntManager.System<RadarBlipsSystem>();
+        _zLevels = EntManager.System<CESharedZLevelsSystem>(); // CE
 
         OnMouseEntered += HandleMouseEntered;
         OnMouseExited += HandleMouseExited;
@@ -462,6 +483,21 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
         _isMouseDown = true;
         _lastMousePos = args.RelativePosition;
+
+        // CE: begin hold-to-descend targeting if the press landed on a planet.
+        if (TryGetHoveredPlanet(args.RelativePosition, out var pressedPlanet, out var inRange))
+        {
+            // Outside the zone band the click is still swallowed (no stray weapon
+            // fire at the blip) but no targeting hold starts.
+            if (inRange)
+            {
+                _holdPlanet = pressedPlanet;
+                _holdStart = IoCManager.Resolve<IGameTiming>().CurTime;
+            }
+
+            return;
+        }
+
         TryFireAtPosition(args.RelativePosition);
     }
 
@@ -474,11 +510,17 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
 
         _isMouseDown = false;
 
-        if (TryGetHoveredPlanet(args.RelativePosition, out var clickedPlanet))
+        // CE: releasing before the hold completes cancels the targeting.
+        if (_holdPlanet != null)
         {
-            OnPlanetClick?.Invoke(clickedPlanet);
+            _holdPlanet = null;
+            TargetingRemaining = null;
             return;
         }
+
+        // Clicks on planets are consumed by the hold-to-descend flow above.
+        if (TryGetHoveredPlanet(args.RelativePosition, out _))
+            return;
 
         var coords = GetMouseEntityCoordinates(args.RelativePosition);
         OnRadarClick?.Invoke(coords);
@@ -489,6 +531,35 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         base.FrameUpdate(args);
 
         _updateAccumulator += args.DeltaSeconds;
+
+        // CE: advance the hold-to-descend targeting countdown; cancel if the cursor
+        // slid off the planet or the button was released elsewhere.
+        if (_holdPlanet is { } holdPlanet)
+        {
+            var stillHeld = _isMouseDown && _isMouseInside
+                && TryGetHoveredPlanet(_lastMousePos, out var hovered) && hovered == holdPlanet;
+
+            if (!stillHeld)
+            {
+                _holdPlanet = null;
+                TargetingRemaining = null;
+            }
+            else
+            {
+                var elapsed = (IoCManager.Resolve<IGameTiming>().CurTime - _holdStart).TotalSeconds;
+                var remaining = PlanetHoldSeconds - elapsed;
+                if (remaining <= 0)
+                {
+                    _holdPlanet = null;
+                    TargetingRemaining = null;
+                    OnPlanetClick?.Invoke(holdPlanet);
+                }
+                else
+                {
+                    TargetingRemaining = (float)remaining;
+                }
+            }
+        }
 
         if (_updateAccumulator >= RadarUpdateInterval)
         {
@@ -609,9 +680,6 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         var shuttleToView = Matrix3x2.CreateScale(new Vector2(MinimapScale, -MinimapScale)) * Matrix3x2.CreateTranslation(MidPointVector);
         var worldToView = worldToShuttle * shuttleToView;
 
-        // Draw shields
-        DrawShields(handle, xform, worldToShuttle);
-
         // Frontier Corvax: north line drawing
         DrawNorthLine(handle, worldRot);
 
@@ -630,6 +698,12 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         {
             DrawCompassOverlay(handle, coordEntRot);
         }
+
+        // CE: planets render under grids, shields, docks and blips.
+        DrawPlanets(handle, xform.MapID, mapPos.Position, worldToView);
+
+        // Draw shields (over planets, under our grid detail)
+        DrawShields(handle, xform, worldToShuttle);
 
         // Draw our grid in detail
         var ourGridId = xform.GridUid;
@@ -661,13 +735,44 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         _grids.Clear();
         _mapManager.FindGridsIntersecting(xform.MapID, new Box2(mapPos.Position - MaxRadarRangeVector, mapPos.Position + MaxRadarRangeVector), ref _grids, approx: true, includeMap: false);
 
+        // CE: gather grids on vertically adjacent maps (neighbouring z-levels and
+        // transit gaps). Z-maps share XY coordinate space, so the same query box works.
+        _drawGrids.Clear();
+        foreach (var sameLayerGrid in _grids)
+        {
+            _drawGrids.Add((sameLayerGrid, 0));
+        }
+
+        _adjacentZMaps.Clear();
+        var ourMapUid = _mapManager.GetMapEntityId(xform.MapID);
+        if (ourMapUid.IsValid())
+            _zLevels.GetAdjacentRenderMaps(ourMapUid, _adjacentZMaps);
+
+        foreach (var (adjMapUid, zMapDir) in _adjacentZMaps)
+        {
+            if (!EntManager.TryGetComponent(adjMapUid, out MapComponent? adjMapComp))
+                continue;
+
+            _offLayerGrids.Clear();
+            _mapManager.FindGridsIntersecting(adjMapComp.MapId, new Box2(mapPos.Position - MaxRadarRangeVector, mapPos.Position + MaxRadarRangeVector), ref _offLayerGrids, approx: true, includeMap: false);
+
+            foreach (var offGrid in _offLayerGrids)
+            {
+                _drawGrids.Add((offGrid, zMapDir));
+            }
+        }
+        // CE: viewer's continuous altitude (level depth + transit progress + airborne
+        // offset) so off-layer ghosting can fade with actual vertical separation.
+        var ourAltitude = _zLevels.GetAbsoluteAltitude(coordEnt);
+        // End CE
+
         // Mono edited: Frontier - collect blip location data outside foreach - more changes ahead
         _tempBlipDataList.Clear();
 
         _visibleGridsSet.Clear();
 
         // Draw other grids... differently
-        foreach (var grid in _grids)
+        foreach (var (grid, zDir) in _drawGrids) // CE: zDir != 0 = grid is on an adjacent z-map
         {
             var gUid = grid.Owner;
             if (gUid == ourGridId || !fixturesQuery.HasComponent(gUid))
@@ -687,14 +792,27 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             if (!detected)
                 continue;
 
-            if (!blipOnly)
+            if (!blipOnly && zDir == 0) // CE: off-layer grids aren't selectable
                 _visibleGridsSet.Add(grid);
             var curGridToWorld = _transform.GetWorldMatrix(gUid);
             var curGridToView = curGridToWorld * worldToView;
 
             var hideColor = hideLabel && iff != null && (iff.Flags & IFFFlags.AlwaysShowColor) == 0x0;
             var labelColor = hideColor ? blipOnly ? Color.Orange : Color.White : _shuttles.GetIFFColor(grid, self: false, iff);
-            var coordColor = new Color(labelColor.R * 0.8f, labelColor.G * 0.8f, labelColor.B * 0.8f, 0.5f);
+
+            // CE: ghost anything that isn't on our layer so it's obviously not
+            // co-planar, fading with the actual vertical separation: a ship mid-transit
+            // (or climbing within its level) is brighter than one a full level away,
+            // and two levels away is dimmer still.
+            var offLayerAlpha = 1f;
+            if (zDir != 0)
+            {
+                var zDist = MathF.Abs(_zLevels.GetAbsoluteAltitude(gUid) - ourAltitude);
+                offLayerAlpha = Math.Clamp(MathF.Pow(OffLayerAlpha, zDist), MinOffLayerAlpha, 1f);
+                labelColor = labelColor.WithAlpha(labelColor.A * offLayerAlpha);
+            }
+
+            var coordColor = new Color(labelColor.R * 0.8f, labelColor.G * 0.8f, labelColor.B * 0.8f, labelColor.A * 0.5f); // CE: inherit ghost alpha
 
             var isPlayerShuttle = iff != null && (iff.Flags & IFFFlags.IsPlayerShuttle) != 0x0;
             // Others default:
@@ -771,6 +889,13 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
                 {
                     // Shows decimal when distance is < 50m, otherwise pointless to show it.
                     var displayedDistance = distance < 50f ? $"{distance:0.0}" : distance < 1000 ? $"{distance:0}" : $"{distance / 1000:0.0}k";
+
+                    // CE: mark off-layer contacts on the distance value; the planar
+                    // distance still reads fine since z-maps share XY space. One
+                    // arrow per level of separation ("↑↑" = two levels up).
+                    if (zDir != 0)
+                        displayedDistance = new string(zDir > 0 ? '↑' : '↓', Math.Min(Math.Abs(zDir), 3)) + displayedDistance;
+
                     var labelText = Loc.GetString("shuttle-console-iff-label", ("name", labelName)!, ("distance", displayedDistance));
 
                     var coordsText = $"({gridMapPos.X:0.0}, {gridMapPos.Y:0.0})";
@@ -827,6 +952,10 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
                         if (prototypeManager.TryIndex(companyComp.CompanyName, out prototype) && prototype != null)
                         {
                             displayColor = prototype.Color;
+
+                            // CE: company colours are opaque; re-apply the off-layer ghosting.
+                            if (zDir != 0)
+                                displayColor = displayColor.WithAlpha(displayColor.A * offLayerAlpha);
                         }
                     }
 
@@ -881,7 +1010,9 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             if (!blipOnly)
             {
                 DrawGrid(handle, curGridToView, grid, labelColor);
-                DrawDocks(handle, gUid, curGridToView);
+
+                if (zDir == 0) // CE: dock markers are meaningless a level up/down
+                    DrawDocks(handle, gUid, curGridToView);
             }
         }
 
@@ -897,8 +1028,6 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
                 handle.DrawCircle(p, 5, Color.ToSrgb(Color.Cyan), true);
             }
         }
-
-        DrawPlanets(handle, xform.MapID, mapPos.Position, worldToView);
 
         #region Mono
         // Draw radar line
@@ -1201,6 +1330,19 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
     {
         _planetHitboxes.Clear();
 
+        // CE: descent spinup state, for the progress ring around the target planet.
+        EntityUid? spinupTarget = null;
+        var spinupProgress = 0f;
+        if (_coordinates != null
+            && EntManager.TryGetComponent<TransformComponent>(_coordinates.Value.EntityId, out var coordXform)
+            && EntManager.TryGetComponent<CEDescentSpinupComponent>(coordXform.GridUid, out var spinup))
+        {
+            spinupTarget = spinup.Planet;
+            var duration = (spinup.End - spinup.Start).TotalSeconds;
+            var elapsed = (IoCManager.Resolve<IGameTiming>().CurTime - spinup.Start).TotalSeconds;
+            spinupProgress = duration > 0 ? Math.Clamp((float)(elapsed / duration), 0f, 1f) : 1f;
+        }
+
         var blips = new List<BlipData>();
         var query = EntManager.AllEntityQueryEnumerator<CEPlanetComponent, TransformComponent>();
         while (query.MoveNext(out var uid, out var planet, out var pXform))
@@ -1211,6 +1353,10 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             var worldPos = _transform.GetWorldPosition(uid);
             var uiPosition = Vector2.Transform(worldPos, worldToView) / UIScale;
             var color = planet.ZoneColor.WithAlpha(0.9f);
+
+            // CE: descents only lock inside the zone band, so the hold-to-target UX
+            // follows the same radius the shared validation checks.
+            var inRange = (worldPos - mapPos).Length() <= planet.ZoneRadius;
 
             var uiXCentre = (int)Width / 2;
             var uiYCentre = (int)Height / 2;
@@ -1233,22 +1379,53 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
             }
             else
             {
-                hitRadius = MathF.Max(RadarBlipSize * 0.5f * planet.MaxScale, 6f);
+                // CE: the disc is world-sized (see below), so the hitbox tracks it — floored so a
+                // far-zoomed-out planet stays clickable.
+                hitRadius = MathF.Max(planet.ZoneRadius * MinimapScale / UIScale, 6f);
             }
 
-            _planetHitboxes.Add((uid, uiPosition, hitRadius));
+            _planetHitboxes.Add((uid, uiPosition, hitRadius, inRange));
             var hovered = _isMouseInside && (_lastMousePos - uiPosition).Length() <= hitRadius;
 
             var labelOffsetY = RadarBlipSize * 0.5f + 2f;
             if (!isOutsideRadarCircle)
             {
-                var radius = RadarBlipSize * 0.5f * planet.MaxScale * UIScale;
-                handle.DrawCircle(uiPosition * UIScale, radius, color);
+                // CE: world-space size — the disc covers the planet's YML zone (ZoneRadius, the
+                // "you are at the planet" band), so it scales with the radar's range/zoom instead
+                // of sitting at a fixed pixel size.
+                var radius = planet.ZoneRadius * MinimapScale;
+                // CE: outline-only, like every other radar element. The band thickness is
+                // inset INWARD so the outer edge stays exactly at the zone radius.
+                var rimThickness = MathF.Max(3f * UIScale, 1.5f);
+                DrawRing(handle, uiPosition * UIScale, radius, rimThickness, color);
                 labelOffsetY = radius / UIScale + 4f;
             }
 
             if (hovered)
-                handle.DrawCircle(uiPosition * UIScale, (hitRadius + 3f) * UIScale, Color.White.WithAlpha(0.8f), false);
+            {
+                // CE: out-of-range planets can't be targeted — tint the hover ring as a refusal.
+                var hoverColor = inRange ? Color.White.WithAlpha(0.8f) : Color.Red.WithAlpha(0.5f);
+                DrawRing(handle, uiPosition * UIScale, (hitRadius + 3f) * UIScale, MathF.Max(UIScale, 1f), hoverColor);
+            }
+
+            // CE: hold-to-descend targeting progress ring.
+            if (_holdPlanet == uid && TargetingRemaining is { } targetingLeft)
+            {
+                var holdRadius = (hitRadius + 5f) * UIScale;
+                var holdProgress = 1f - targetingLeft / PlanetHoldSeconds;
+                DrawRing(handle, uiPosition * UIScale, holdRadius, MathF.Max(UIScale, 1f), Color.White.WithAlpha(0.15f));
+                DrawProgressArc(handle, uiPosition * UIScale, holdRadius, holdProgress, Color.Cyan);
+            }
+
+            // CE: descent spinup progress ring — green and a bit larger than the
+            // targeting ring (drawn twice for a thicker line).
+            if (spinupTarget == uid)
+            {
+                var ringRadius = (hitRadius + 8f) * UIScale;
+                DrawRing(handle, uiPosition * UIScale, ringRadius, MathF.Max(UIScale, 1f), Color.LimeGreen.WithAlpha(0.15f));
+                DrawProgressArc(handle, uiPosition * UIScale, ringRadius, spinupProgress, Color.LimeGreen);
+                DrawProgressArc(handle, uiPosition * UIScale, ringRadius + 1f, spinupProgress, Color.LimeGreen);
+            }
 
             if (!ShowIFF)
                 continue;
@@ -1265,18 +1442,70 @@ public partial class ShuttleNavControl : BaseShuttleControl // Mono
         NfDrawBlips(handle, blips);
     }
 
-    private bool TryGetHoveredPlanet(Vector2 relativePos, out EntityUid planet)
+    /// <summary>
+    /// CE: draws an unfilled ring as a filled annulus (triangle strip between the outer
+    /// and inner circle). Line-based rings (<see cref="DrawingHandleScreen.DrawCircle"/>
+    /// with filled=false, or a closed LineStrip) leave seams/notches where segments join;
+    /// a solid band cannot.
+    /// </summary>
+    private static void DrawRing(DrawingHandleScreen handle, Vector2 center, float radius, float thickness, Color color)
     {
-        foreach (var (uid, pos, radius) in _planetHitboxes)
+        if (radius <= 0f)
+            return;
+
+        var inner = Math.Max(radius - thickness, 0f);
+        // Segment count scales with radius so big rings stay round, small ones stay cheap.
+        var segments = Math.Clamp((int)(radius * 0.75f), 24, 128);
+        var verts = new Vector2[(segments + 1) * 2];
+        for (var i = 0; i <= segments; i++)
+        {
+            // i % segments: the final pair reuses the first angle exactly, so the strip
+            // closes on identical vertices — no seam.
+            var angle = MathF.Tau * (i % segments) / segments;
+            var dir = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+            verts[i * 2] = center + dir * radius;
+            verts[i * 2 + 1] = center + dir * inner;
+        }
+
+        handle.DrawPrimitives(DrawPrimitiveTopology.TriangleStrip, verts, color);
+    }
+
+    /// <summary>CE: draws a clockwise progress arc starting at 12 o'clock.</summary>
+    private static void DrawProgressArc(DrawingHandleScreen handle, Vector2 center, float radius, float progress, Color color)
+    {
+        progress = Math.Clamp(progress, 0f, 1f);
+        if (progress <= 0f)
+            return;
+
+        var segments = Math.Max(2, (int)(64 * progress));
+        var verts = new Vector2[segments + 1];
+        const float start = -MathF.PI / 2f;
+        for (var i = 0; i <= segments; i++)
+        {
+            var angle = start + MathF.Tau * progress * i / segments;
+            verts[i] = center + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius;
+        }
+
+        handle.DrawPrimitives(DrawPrimitiveTopology.LineStrip, verts, color);
+    }
+
+    private bool TryGetHoveredPlanet(Vector2 relativePos, out EntityUid planet)
+        => TryGetHoveredPlanet(relativePos, out planet, out _);
+
+    private bool TryGetHoveredPlanet(Vector2 relativePos, out EntityUid planet, out bool inRange)
+    {
+        foreach (var (uid, pos, radius, ranged) in _planetHitboxes)
         {
             if ((relativePos - pos).Length() > radius)
                 continue;
 
             planet = uid;
+            inRange = ranged;
             return true;
         }
 
         planet = default;
+        inRange = false;
         return false;
     }
 
