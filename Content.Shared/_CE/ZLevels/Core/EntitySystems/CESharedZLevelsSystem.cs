@@ -45,6 +45,7 @@ public abstract partial class CESharedZLevelsSystem : EntitySystem
     [Dependency] private EntityQuery<CEZMapComponent> _zMapQuery = default!;
     [Dependency] private EntityQuery<CEZMapNetworkComponent> _zNetworkQuery = default!;
     [Dependency] private EntityQuery<CEZLevelHighGroundComponent> _zHighGroundQuery = default!;
+    [Dependency] private EntityQuery<CEZTransitMapComponent> _zTransitQuery = default!;
 
     private bool _clientSimulation;
     private TimeSpan _fixedTimestep;

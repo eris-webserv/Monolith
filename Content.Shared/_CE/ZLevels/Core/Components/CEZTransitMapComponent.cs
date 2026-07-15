@@ -61,4 +61,15 @@ public sealed partial class CEZTransitMapComponent : Component
     /// </summary>
     [DataField, AutoNetworkedField]
     public bool ConvoyLead;
+
+    /// <summary>
+    /// Target linear/angular damping for grids on this map. Grids in transit are always
+    /// <c>BodyStatus.InAir</c>, so <c>TileFrictionController</c> would only apply
+    /// <c>physics.air_friction</c> (~0.2) and ships keep lateral drift near-forever,
+    /// while the same ship low over a z-level gets flipped to OnGround by the z-physics
+    /// height sync and brakes at <c>physics.tile_friction</c> (8.0) x tile friction (1.0).
+    /// This default matches that grounded feel; set to 0 to disable.
+    /// </summary>
+    [DataField, AutoNetworkedField]
+    public float GridDamping = 8f;
 }

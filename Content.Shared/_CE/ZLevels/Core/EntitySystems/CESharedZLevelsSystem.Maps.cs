@@ -74,6 +74,60 @@ public abstract partial class CESharedZLevelsSystem
         TryMapOffset(inputMapUid, -1, out belowMapUid);
 
     /// <summary>
+    /// Collects maps that are up/down from the given map for rendering purposes
+    /// (e.g. radar ghosting): the neighbouring z-levels of a stacked network out to
+    /// <paramref name="maxLayers"/>, transit gaps touching this level, and — when
+    /// called on a transit map itself — the levels and convoy layers bounding it.
+    /// Dir is the signed layer offset (+1 = one level above, -2 = two below, ...);
+    /// transit gaps use the sign of the side they sit on.
+    /// </summary>
+    [PublicAPI]
+    public void GetAdjacentRenderMaps(EntityUid mapUid, List<(EntityUid MapUid, int Dir)> result, int maxLayers = 2)
+    {
+        // Transit map: bounded by its lower/upper z-levels plus convoy neighbours.
+        if (_zTransitQuery.TryComp(mapUid, out var transit))
+        {
+            if (transit.UpperMap is { } upper && !TerminatingOrDeleted(upper))
+                result.Add((upper, 1));
+            if (transit.LowerMap is { } lower && !TerminatingOrDeleted(lower))
+                result.Add((lower, -1));
+            if (transit.TransitAbove is { } tAbove && !TerminatingOrDeleted(tAbove))
+                result.Add((tAbove, 1));
+            if (transit.TransitBelow is { } tBelow && !TerminatingOrDeleted(tBelow))
+                result.Add((tBelow, -1));
+            return;
+        }
+
+        if (!_zMapQuery.TryComp(mapUid, out var zMap))
+            return;
+
+        // Walk the stack in both directions out to maxLayers.
+        var cursor = zMap.MapAbove;
+        for (var i = 1; i <= maxLayers && cursor is { } above && !TerminatingOrDeleted(above); i++)
+        {
+            result.Add((above, i));
+            cursor = _zMapQuery.TryComp(above, out var aboveMap) ? aboveMap.MapAbove : null;
+        }
+
+        cursor = zMap.MapBelow;
+        for (var i = 1; i <= maxLayers && cursor is { } below && !TerminatingOrDeleted(below); i++)
+        {
+            result.Add((below, -i));
+            cursor = _zMapQuery.TryComp(below, out var belowMap) ? belowMap.MapBelow : null;
+        }
+
+        // Transit maps holding grids currently between this level and a neighbour.
+        var query = EntityQueryEnumerator<CEZTransitMapComponent>();
+        while (query.MoveNext(out var transitUid, out var transitComp))
+        {
+            if (transitComp.LowerMap == mapUid)
+                result.Add((transitUid, 1));
+            else if (transitComp.UpperMap == mapUid)
+                result.Add((transitUid, -1));
+        }
+    }
+
+    /// <summary>
     /// Returns a list of all maps above the specified map. The closest map at the top is returned first.
     /// </summary>
     [PublicAPI]

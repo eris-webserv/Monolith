@@ -5,7 +5,9 @@
 
 using System.Numerics;
 using Content.Shared._CE.ZLevels.Core.Components;
+using Content.Shared.CCVar;
 using Content.Shared.Chasm;
+using Content.Shared.Movement.Events;
 using JetBrains.Annotations;
 using Robust.Shared.Audio;
 using Robust.Shared.Map;
@@ -18,11 +20,36 @@ public abstract partial class CESharedZLevelsSystem
     private TimeSpan _accumulatedTime = TimeSpan.Zero;
     private readonly List<EntityUid> _dirtyMovementBodies = new();
 
+    private float _airFriction;
+
     private void InitializeMovement()
     {
         SubscribeLocalEvent<CEZPhysicsComponent, CEZLevelMapMoveEvent>(OnZLevelMapMove);
         SubscribeLocalEvent<CEZPhysicsComponent, MoveEvent>(OnMoveEvent);
         SubscribeLocalEvent<CEZMapComponent, TileChangedEvent>(OnTileChanged);
+        SubscribeLocalEvent<MapGridComponent, TileFrictionEvent>(OnGridTileFriction);
+
+        _config.OnValueChanged(CCVars.AirFriction, v => _airFriction = v, true);
+    }
+
+    /// <summary>
+    /// Grids on a transit map are always <c>BodyStatus.InAir</c>, so
+    /// <c>TileFrictionController</c> only applies <c>physics.air_friction</c> to them and
+    /// they keep lateral drift near-forever, while the same ship hovering low over a
+    /// z-level is flipped to OnGround by the z-physics height sync and brakes at full tile
+    /// friction. Rescale the air-friction base to the transit map's target damping so
+    /// rides shed sideways velocity the same way on both map types.
+    /// </summary>
+    private void OnGridTileFriction(Entity<MapGridComponent> ent, ref TileFrictionEvent args)
+    {
+        if (_airFriction <= 0f)
+            return;
+
+        if (!_zTransitQuery.TryGetComponent(Transform(ent).MapUid, out var transit) ||
+            transit.GridDamping <= 0f)
+            return;
+
+        args.Modifier *= transit.GridDamping / _airFriction;
     }
 
     /// <summary>
