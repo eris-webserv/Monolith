@@ -1,5 +1,6 @@
 using System.Numerics;
 using Content.Client._CE.ZLevels.Core; // Mono
+using Content.Shared._CE.Planets.Descent; // CE
 using Content.Shared._CE.ZLevels.Core.Components; // Mono
 using Content.Shared._Mono.Company;
 using Content.Shared.Shuttles.BUIStates;
@@ -11,6 +12,8 @@ using Robust.Shared.GameObjects;
 using Robust.Shared.Map;
 using Robust.Shared.Physics.Components;
 using Robust.Shared.Prototypes;
+using Robust.Shared.Timing;
+using Robust.Shared.Utility; // CE
 
 namespace Content.Client.Shuttles.UI;
 
@@ -19,11 +22,15 @@ public sealed partial class NavScreen : BoxContainer
 {
     [Dependency] private IEntityManager _entManager = default!;
     [Dependency] private IPrototypeManager _prototypeManager = default!;
+    [Dependency] private IGameTiming _timing = default!; // CE
     private SharedTransformSystem _xformSystem;
     private CEClientZLevelsSystem _zLevels; // Mono
 
     private EntityUid? _consoleEntity; // Entity of controlling console
     private EntityUid? _shuttleEntity;
+
+    // CE: planet descent request (fired once the hold-to-target completes)
+    public event Action<NetEntity>? OnDescendRequest;
 
     public NavScreen()
     {
@@ -99,13 +106,11 @@ public sealed partial class NavScreen : BoxContainer
         NavRadar.SetConsole(console);
     }
 
+    // CE: fired by the radar once the pilot has held the click on a planet for the
+    // full targeting duration. No popups — the console status line shows the state.
     private void OnPlanetClicked(EntityUid planet)
     {
-        if (!_entManager.TryGetComponent<MetaDataComponent>(planet, out var meta))
-            return;
-
-        _entManager.System<Content.Client.Popups.PopupSystem>()
-            .PopupCursor(Loc.GetString("ce-planet-clicked", ("planet", meta.EntityName)));
+        OnDescendRequest?.Invoke(_entManager.GetNetEntity(planet));
     }
 
     private void OnIFFTogglePressed(BaseButton.ButtonEventArgs args)
@@ -247,13 +252,48 @@ public sealed partial class NavScreen : BoxContainer
             }
         }
 
+        // CE: descent status trumps everything else. Charging counts down the console
+        // spinup; Descending holds from the drop through the warp until the sequence
+        // concludes (the grid rides a pseudo-map / transit mid-sequence, which would
+        // otherwise read as Hovering/Flying).
+        if (_shuttleEntity is { } shuttleUid)
+        {
+            if (_entManager.TryGetComponent(shuttleUid, out CEDescentSpinupComponent? spinup))
+            {
+                var remaining = Math.Max(0.0, (spinup.End - _timing.CurTime).TotalSeconds);
+                state = Loc.GetString("shuttle-console-travel-state-charging",
+                    ("countdown", $"{remaining:0.0}"));
+            }
+            else if (_entManager.HasComponent<CEDescentComponent>(shuttleUid))
+            {
+                state = Loc.GetString("shuttle-console-travel-state-descending");
+            }
+            else if (_entManager.TryGetComponent(shuttleUid, out CEDescentStunnedComponent? stunned))
+            {
+                var remaining = Math.Max(0.0, (stunned.End - _timing.CurTime).TotalSeconds);
+                state = Loc.GetString("shuttle-console-travel-state-stunned",
+                    ("countdown", $"{remaining:0.0}"));
+            }
+        }
+
+        // CE: while the pilot is holding the click on a planet, show the targeting
+        // countdown instead.
+        if (NavRadar.TargetingRemaining is { } targeting)
+        {
+            state = Loc.GetString("shuttle-console-travel-state-targeting",
+                ("countdown", $"{targeting:0.0}"));
+        }
+
         var onZNetwork = altitude != null;
         GridAltitudeCaption.Visible = onZNetwork;
         GridAltitude.Visible = onZNetwork;
         GridVerticalVelocityCaption.Visible = onZNetwork;
         GridVerticalVelocity.Visible = onZNetwork;
-        GridTravelStateCaption.Visible = onZNetwork;
-        GridTravelState.Visible = onZNetwork;
+
+        var stateText = state ?? Loc.GetString("shuttle-console-travel-state-hovering");
+        var stateMsg = FormattedMessage.FromMarkupPermissive(stateText);
+        GridTravelState.Text = stateMsg.ToString();
+        GridTravelState.FontColorOverride = FirstMarkupColor(stateMsg) ?? Color.FromHex("#00ff2a");
 
         if (!onZNetwork)
             return;
@@ -266,7 +306,19 @@ public sealed partial class NavScreen : BoxContainer
             vertical = velPhys.Velocity;
         GridVerticalVelocity.Text = Loc.GetString("shuttle-console-vertical-velocity-value",
             ("velocity", $"{vertical + 10f * float.Epsilon:0.00}"));
+    }
 
-        GridTravelState.Text = state!;
+    /// <summary>
+    /// CE: returns the first [color=...] value in a parsed message, if any.
+    /// </summary>
+    private static Color? FirstMarkupColor(FormattedMessage message)
+    {
+        foreach (var node in message.Nodes)
+        {
+            if (node is { Closing: false, Name: "color" } && node.Value.ColorValue is { } color)
+                return color;
+        }
+
+        return null;
     }
 }
