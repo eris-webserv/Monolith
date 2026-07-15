@@ -92,4 +92,25 @@ public sealed partial class ShipShieldEmitterComponent : Component
     /// </summary>
     [DataField]
     public float CollisionResistanceMultiplier = 1.0f;
+
+    /// <summary>
+    /// pzn: played to the whole ship when a ground crash overloads the shield and it
+    /// drops to respool. Null = silent until the sound file lands; set the path here
+    /// or per-prototype once it exists.
+    /// </summary>
+    [DataField]
+    public SoundSpecifier? CrashShutdownSound = new SoundPathSpecifier("/Audio/_CE/Explosions/shieldfail.ogg");
+
+    /// <summary>
+    /// pzn: seconds the shield stays down respooling after a crash overload.
+    /// </summary>
+    [DataField]
+    public float CrashRespoolTime = 30f;
+
+    /// <summary>
+    /// pzn: true while the shield is down specifically because a ground crash
+    /// overloaded it — drives the red examine line. Cleared when the shield re-forms.
+    /// </summary>
+    [ViewVariables]
+    public bool CrashRespooling = false;
 }

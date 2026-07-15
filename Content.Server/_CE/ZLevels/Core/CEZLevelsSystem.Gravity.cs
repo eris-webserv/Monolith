@@ -4,6 +4,7 @@
  */
 
 using Content.Server._CE.ZLevels.Core.Components;
+using Content.Server._Crescent.ShipShields;
 using Content.Server.Explosion.EntitySystems;
 using Content.Server.Gravity;
 using Content.Shared._CE.ZLevels.Core.Components;
@@ -18,6 +19,7 @@ public sealed partial class CEZLevelsSystem
 {
     [Dependency] private ExplosionSystem _explosion = default!;
     [Dependency] private GravitySystem _grav = default!;
+    [Dependency] private ShipShieldsSystem _shipShields = default!;
 
     [Dependency] private EntityQuery<CEZMapComponent> _zMapQuery = default!;
     [Dependency] private EntityQuery<CEZGroundLayerComponent> _zGroundQuery = default!;
@@ -460,10 +462,23 @@ public sealed partial class CEZLevelsSystem
     private void CrashGrid(Entity<MapGridComponent, CEZGridFallerComponent> ent)
     {
         var tileCount = 0;
+        var counter = _map.GetAllTilesEnumerator(ent, ent.Comp1);
+        while (counter.MoveNext(out _))
+            tileCount++;
+
+        if (tileCount == 0)
+            return;
+
+        // pzn: an active shieldgen eats the crash like it eats bullets — the hull is
+        // spared, the emitter takes the whole blast as damage. Past its damage limit
+        // the shield still blocks this one crash but drops and respools.
+        var totalIntensity = tileCount * (ent.Comp2.CrashTileIntensity + ent.Comp2.CrashIntensityPerTile);
+        if (_shipShields.TryAbsorbCrash(ent, totalIntensity))
+            return;
+
         var tiles = _map.GetAllTilesEnumerator(ent, ent.Comp1);
         while (tiles.MoveNext(out var tileRef))
         {
-            tileCount++;
             var coords = _map.GridTileToLocal(ent, ent.Comp1, tileRef.Value.GridIndices);
             _explosion.QueueExplosion(coords,
                 ExplosionSystem.DefaultExplosionPrototypeId,
@@ -473,9 +488,6 @@ public sealed partial class CEZLevelsSystem
                 cause: ent,
                 addLog: false);
         }
-
-        if (tileCount == 0)
-            return;
 
         _explosion.QueueExplosion(ent.Owner,
             ExplosionSystem.DefaultExplosionPrototypeId,
