@@ -50,6 +50,15 @@ public sealed partial class CEDescentComponent : Component
     [ViewVariables, AutoNetworkedField]
     public EntityUid? Planet;
 
+    /// <summary>
+    /// Direction of travel: false = descending onto the planet, true = ascending off it
+    /// (breaching orbit from the open-sky top of the planet's z-stack). The theatre is
+    /// the same machine run in reverse — only the warp target differs (space map instead
+    /// of the network's top level) and the client flips the zoom/swell curves.
+    /// </summary>
+    [ViewVariables, AutoNetworkedField]
+    public bool Ascent;
+
     /// <summary>The z-map network the ship is descending into.</summary>
     [ViewVariables, AutoNetworkedField]
     public EntityUid? Network;

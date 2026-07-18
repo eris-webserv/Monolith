@@ -3,12 +3,14 @@
  * https://github.com/space-wizards/space-station-14/blob/master/LICENSE.TXT
  */
 
+using Content.Server._CE.Planets.Caves;
 using Content.Server._CE.ZLevels.Core;
+using Content.Server._DV.Planet;
 using Content.Server.Administration;
 using Content.Shared._CE.Planets;
-using Content.Shared._CE.ZLevels.Mapping.Prototypes;
+using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared.Administration;
-using Robust.Shared.EntitySerialization.Systems;
+using Content.Shared.Gravity;
 using Robust.Shared.Map;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Toolshed;
@@ -18,19 +20,21 @@ using Robust.Shared.Utility;
 namespace Content.Server._CE.Planets;
 
 /// <summary>
-/// Spawns a planet prototype at a coordinate on a map with a freshly loaded z-network already
-/// attached, so the planet is immediately descendable. Usage:
-/// <c>cezspawnplanet CEPlanetNauvis &lt;mapId&gt; &lt;x&gt; &lt;y&gt; [zMap]</c>. The zMap arg is a
-/// <see cref="CEZLevelMapPrototype"/> id and defaults to <c>Grasslands</c> when omitted. Returns
-/// the spawned planet entity so it can be piped into further toolshed commands, same as
+/// Spawns a planet entity at a coordinate on a map with a fully runtime-generated z-network
+/// attached, so the planet is immediately descendable. The ground layer (depth 0) is
+/// biome-generated from a <see cref="CEZPlanetPrototype"/>'s planet prototype and the sky layers
+/// above it are empty maps created at runtime - no saved map files involved. Usage:
+/// <c>cezspawnplanet CEPlanetNauvis &lt;mapId&gt; &lt;x&gt; &lt;y&gt; [zPlanet]</c>. The zPlanet
+/// arg is a <see cref="CEZPlanetPrototype"/> id and defaults to <c>Grasslands</c> when omitted.
+/// Returns the spawned planet entity so it can be piped into further toolshed commands, same as
 /// <c>cespawnplanet</c>.
 /// </summary>
 [ToolshedCommand(Name = "cezspawnplanet"), AdminCommand(AdminFlags.Spawn)]
-public sealed class CEZSpawnPlanetCommand : ToolshedCommand
+public sealed partial class CEZSpawnPlanetCommand : ToolshedCommand
 {
     [Dependency] private IPrototypeManager _proto = default!;
 
-    public const string DefaultZMap = "Grasslands";
+    public const string DefaultZPlanet = "Grasslands";
 
     [CommandImplementation]
     public EntityUid SpawnPlanet(
@@ -39,40 +43,55 @@ public sealed class CEZSpawnPlanetCommand : ToolshedCommand
         [CommandArgument(typeof(CEMapUidParser))] EntityUid map,
         float x,
         float y,
-        [CommandArgument(typeof(CEZMapProtoParser))] ProtoId<CEZLevelMapPrototype> zMap = default)
+        [CommandArgument(typeof(CEZPlanetProtoParser))] ProtoId<CEZPlanetPrototype> zPlanet = default)
     {
         var zLevels = GetSys<CEZLevelsSystem>();
-        var mapLoader = GetSys<MapLoaderSystem>();
+        var planetSys = GetSys<PlanetSystem>();
         var mapSys = GetSys<SharedMapSystem>();
         var meta = GetSys<MetaDataSystem>();
 
         // Optional arg: toolshed passes default(ProtoId) when omitted.
-        var zMapId = string.IsNullOrEmpty(zMap.Id) ? DefaultZMap : zMap.Id;
-        if (!_proto.TryIndex<CEZLevelMapPrototype>(zMapId, out var indexed))
+        var zPlanetId = string.IsNullOrEmpty(zPlanet.Id) ? DefaultZPlanet : zPlanet.Id;
+        if (!_proto.TryIndex<CEZPlanetPrototype>(zPlanetId, out var indexed))
         {
-            ctx.ReportError(new UnknownZMapPrototype(zMapId));
+            ctx.ReportError(new UnknownZPlanetPrototype(zPlanetId));
             return EntityUid.Invalid;
         }
 
-        // Build the z-network before spawning the planet so a failed map load leaves nothing behind.
-        var network = zLevels.CreateMapNetwork(indexed.Components);
+        if (indexed.Layers < 1)
+        {
+            ctx.ReportError(new InvalidZPlanetLayerCount(zPlanetId, indexed.Layers));
+            return EntityUid.Invalid;
+        }
+
+        // Build the z-network before spawning the planet so a failure leaves nothing behind.
+        var network = zLevels.CreateMapNetwork(indexed.NetworkComponents);
         meta.SetEntityName(network, $"Planet z-Network: {proto.Id} ({indexed.ID})");
 
         var maps = new Dictionary<EntityUid, int>();
-        var depth = 0;
-        foreach (var path in indexed.Maps)
-        {
-            if (!mapLoader.TryLoadMap(path, out var mapEnt, out _))
-            {
-                ctx.ReportError(new ZMapLoadFailed(path, depth));
-                Cleanup();
-                return EntityUid.Invalid;
-            }
 
-            mapSys.InitializeMap(mapEnt.Value.Comp.MapId);
-            meta.SetEntityName(mapEnt.Value, $"{proto.Id} ({indexed.ID}) [{depth}]");
-            maps.Add(mapEnt.Value, depth);
-            depth++;
+        // Ground layer (depth 0): biome-generated from the planet prototype.
+        var ground = planetSys.SpawnPlanet(indexed.Planet);
+        EntityManager.EnsureComponent<CEZGroundLayerComponent>(ground);
+        maps.Add(ground, 0);
+
+        // Sky layers (depth 1+): empty maps created at runtime. Atmosphere, roof and lighting
+        // come from the network's shared components once the maps are added to it.
+        for (var depth = 1; depth < indexed.Layers; depth++)
+        {
+            var sky = mapSys.CreateMap(out _);
+            meta.SetEntityName(sky, $"{proto.Id} ({indexed.ID}) sky [{depth}]");
+
+            var gravity = EntityManager.EnsureComponent<GravityComponent>(sky);
+            gravity.Enabled = true;
+            gravity.Inherent = true;
+            EntityManager.Dirty(sky, gravity);
+
+            // The clouds layer is just a sky layer with the cloud visuals marker.
+            if (depth == indexed.CloudsIndex)
+                EntityManager.EnsureComponent<CEZCloudLayerComponent>(sky);
+
+            maps.Add(sky, depth);
         }
 
         if (!zLevels.TryAddMapsIntoNetwork(network, maps))
@@ -101,19 +120,19 @@ public sealed class CEZSpawnPlanetCommand : ToolshedCommand
     }
 }
 
-public sealed class UnknownZMapPrototype(string proto) : ConError
+public sealed class UnknownZPlanetPrototype(string proto) : ConError
 {
     public override FormattedMessage DescribeInner()
     {
-        return FormattedMessage.FromUnformatted($"Unknown zMap prototype {proto}");
+        return FormattedMessage.FromUnformatted($"Unknown cezPlanet prototype {proto}");
     }
 }
 
-public sealed class ZMapLoadFailed(ResPath path, int depth) : ConError
+public sealed class InvalidZPlanetLayerCount(string proto, int layers) : ConError
 {
     public override FormattedMessage DescribeInner()
     {
-        return FormattedMessage.FromUnformatted($"Failed to load zNetwork map (depth {depth}): {path}");
+        return FormattedMessage.FromUnformatted($"cezPlanet {proto} has invalid layer count {layers} (must be >= 1)");
     }
 }
 

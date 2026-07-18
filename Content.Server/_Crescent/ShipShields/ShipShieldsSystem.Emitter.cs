@@ -97,8 +97,9 @@ public partial class ShipShieldsSystem
         // the grid directly instead.
         var filter = Filter.BroadcastGrid(grid);
 
+        // Played client-side off this event so the Ambience volume slider applies.
         if (emitter.CrashShutdownSound is { } sound)
-            _audio.PlayGlobal(sound, filter, true, sound.Params);
+            RaiseNetworkEvent(new ShipShieldSoundEvent(_audio.ResolveSound(sound), sound.Params), filter);
 
         // Rattle everyone aboard so the drop reads even over the crash noise:
         // the sustained radial shake (same feel as a thruster blowing), driven

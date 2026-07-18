@@ -75,6 +75,18 @@ public sealed partial class CEZLevelsSystem
                 if (!gravgen.GravityActive || !gravgenXform.ParentUid.IsValid())
                     continue;
 
+                // pzn: an aborted launch telegraph discharges the drive through the
+                // gravgens (see CEDescentSystem.AbortAscentWarning) — a stunned grid's
+                // generators contribute nothing until the stun expires, so the set
+                // falls even though the gravgens are otherwise powered and happy.
+                if (TryComp<CEZGravgenStunnedComponent>(gravgenXform.ParentUid, out var gravStun))
+                {
+                    if (_timing.CurTime < gravStun.End)
+                        continue;
+
+                    RemCompDeferred<CEZGravgenStunnedComponent>(gravgenXform.ParentUid);
+                }
+
                 // Unrated (<= 0) = unlimited; infinity absorbs any finite additions.
                 var rated = gravgen.MaxHandledMass <= 0f ? float.PositiveInfinity : gravgen.MaxHandledMass;
                 _gravgenCapacity[gravgenXform.ParentUid] =

@@ -231,31 +231,34 @@ public sealed partial class NavScreen : BoxContainer
             if (onTransit || _entManager.HasComponent<CEZMapComponent>(mapUid))
                 altitude = _zLevels.GetAbsoluteAltitude(shuttle);
 
-            if (onTransit)
+            // The liftoff spool countdown outranks Flying: it's the ground-layer
+            // z-hop spool (see CEZLevelsSystem.PilotControl), not the ascent breach —
+            // that one renders from the networked charge/warning timestamps below.
+            if (_entManager.TryGetComponent(shuttle, out CEZPhysicsComponent? spoolPhys) &&
+                spoolPhys.LaunchCountdown > 0f)
+            {
+                state = Loc.GetString("shuttle-console-travel-state-launching",
+                    ("countdown", $"{spoolPhys.LaunchCountdown:0.0}"));
+            }
+            else if (onTransit)
             {
                 state = Loc.GetString("shuttle-console-travel-state-flying");
             }
             else if (altitude != null)
             {
-                if (_entManager.TryGetComponent(shuttle, out CEZPhysicsComponent? spoolPhys) &&
-                    spoolPhys.LaunchCountdown > 0f)
-                {
-                    state = Loc.GetString("shuttle-console-travel-state-launching",
-                        ("countdown", $"{spoolPhys.LaunchCountdown:0.0}"));
-                }
-                else
-                {
-                    state = Loc.GetString(_entManager.HasComponent<CEZGroundLayerComponent>(mapUid)
-                        ? "shuttle-console-travel-state-grounded"
-                        : "shuttle-console-travel-state-hovering");
-                }
+                state = Loc.GetString(_entManager.HasComponent<CEZGroundLayerComponent>(mapUid)
+                    ? "shuttle-console-travel-state-grounded"
+                    : "shuttle-console-travel-state-hovering");
             }
         }
 
-        // CE: descent status trumps everything else. Charging counts down the console
-        // spinup; Descending holds from the drop through the warp until the sequence
-        // concludes (the grid rides a pseudo-map / transit mid-sequence, which would
-        // otherwise read as Hovering/Flying).
+        // CE: descent/ascent status trumps everything else. Charging counts down the
+        // console spinup (descent) or the breach charge (ascent — the ship is climbing
+        // the open-sky gap, a transit map, which would otherwise read Flying);
+        // Launching counts down the ascent telegraph; Descending holds from the drop
+        // through the warp until the sequence concludes (the grid rides a pseudo-map /
+        // transit mid-sequence, which would otherwise read as Hovering/Flying).
+        // All of these render client-side off networked timestamps.
         if (_shuttleEntity is { } shuttleUid)
         {
             if (_entManager.TryGetComponent(shuttleUid, out CEDescentSpinupComponent? spinup))
@@ -267,6 +270,18 @@ public sealed partial class NavScreen : BoxContainer
             else if (_entManager.HasComponent<CEDescentComponent>(shuttleUid))
             {
                 state = Loc.GetString("shuttle-console-travel-state-descending");
+            }
+            else if (_entManager.TryGetComponent(shuttleUid, out CEAscentWarningComponent? ascentWarning))
+            {
+                var remaining = Math.Max(0.0, (ascentWarning.End - _timing.CurTime).TotalSeconds);
+                state = Loc.GetString("shuttle-console-travel-state-launching",
+                    ("countdown", $"{remaining:0.0}"));
+            }
+            else if (_entManager.TryGetComponent(shuttleUid, out CEAscentChargeComponent? ascentCharge))
+            {
+                var remaining = Math.Max(0.0, (ascentCharge.End - _timing.CurTime).TotalSeconds);
+                state = Loc.GetString("shuttle-console-travel-state-charging",
+                    ("countdown", $"{remaining:0.0}"));
             }
             else if (_entManager.TryGetComponent(shuttleUid, out CEDescentStunnedComponent? stunned))
             {

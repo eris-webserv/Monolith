@@ -1,0 +1,18 @@
+- type: cezPlanet
+  id: Grasslands
+  planet: MonoGrasslands
+  layers: 5
+  cloudsIndex: 2
+  networkComponents:
+    - type: MapAtmosphere
+      space: False
+      mixture:
+        volume: 2500
+        immutable: True
+        temperature: 293.15
+        moles:
+        - 21.824879 # oxygen
+        - 82.10312 # nitrogen
+    - type: CEZLevelRoof
+    - type: MapLight
+      ambientLightColor: "#c8fdff"

@@ -4,6 +4,7 @@
  */
 
 using Content.Shared._CE.Planets;
+using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Robust.Server.GameStates;
 
 namespace Content.Server._CE.Planets;
@@ -20,6 +21,7 @@ namespace Content.Server._CE.Planets;
 public sealed partial class CEPlanetSystem : EntitySystem
 {
     [Dependency] private PvsOverrideSystem _pvsOverride = default!;
+    [Dependency] private CESharedZLevelsSystem _zLevels = default!;
 
     public override void Initialize()
     {
@@ -37,5 +39,33 @@ public sealed partial class CEPlanetSystem : EntitySystem
     private void OnShutdown(Entity<CEPlanetComponent> ent, ref ComponentShutdown args)
     {
         _pvsOverride.RemoveGlobalOverride(ent.Owner);
+    }
+
+    /// <summary>
+    /// Resolves the space-side planet entity whose descendable z-network contains
+    /// <paramref name="mapUid"/>. This is the reverse of
+    /// <see cref="CEPlanetComponent.Network"/>: ground-side machinery (e.g. the shield
+    /// generator) lives on a network map and needs the planet entity that owns it —
+    /// planet-level state like <c>CEPlanetShieldComponent</c> hangs off the planet
+    /// entity, never off the maps. Linear in the number of planets, which is fine:
+    /// there are only ever a handful.
+    /// </summary>
+    public bool TryGetPlanetForMap(EntityUid mapUid, out Entity<CEPlanetComponent> planet)
+    {
+        planet = default;
+        if (!_zLevels.TryGetMapNetwork(mapUid, out var network))
+            return false;
+
+        var query = EntityQueryEnumerator<CEPlanetComponent>();
+        while (query.MoveNext(out var uid, out var comp))
+        {
+            if (comp.Network != network.Owner)
+                continue;
+
+            planet = (uid, comp);
+            return true;
+        }
+
+        return false;
     }
 }

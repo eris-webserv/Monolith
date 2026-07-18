@@ -4,9 +4,9 @@
  */
 
 using Content.Shared._CE.Planets;
+using Content.Shared._CE.Planets.Shields;
 using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
-using Content.Shared.Popups;
 using Robust.Shared.Map.Components;
 using Robust.Shared.Timing;
 
@@ -21,8 +21,7 @@ namespace Content.Shared._CE.Planets.Descent;
 public abstract partial class CESharedDescentSystem : EntitySystem
 {
     [Dependency] protected IGameTiming Timing = default!;
-    [Dependency] private readonly SharedTransformSystem _xform = default!;
-    [Dependency] private readonly SharedPopupSystem _popup = default!;
+    [Dependency] private SharedTransformSystem _xform = default!;
 
     // Stage 2 (the warp) is the Vanishing → Arriving
     // transition itself: one tick, no duration entry. There is no chargeup entry
@@ -38,6 +37,14 @@ public abstract partial class CESharedDescentSystem : EntitySystem
     public static readonly TimeSpan DescendTime = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan VanishTime = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan ArriveTime = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// The ascent leg's Descending stage (the world falling away below a climbing ship)
+    /// runs much longer than the 4s descent drop: a launch reads as sustained engine
+    /// strain, not a bomb drop in reverse, and the ground receding is the whole show.
+    /// Vanish/arrive covers are shared with descent.
+    /// </summary>
+    public static readonly TimeSpan AscendTime = TimeSpan.FromSeconds(10);
 
     /// <summary>How long the console spinup theatre runs before the descent proper begins.</summary>
     public static readonly TimeSpan SpinupTime = TimeSpan.FromSeconds(5);
@@ -66,7 +73,17 @@ public abstract partial class CESharedDescentSystem : EntitySystem
             return;
 
         if (!TryBeginDescent(gridUid, GetEntity(args.Planet), out var denyReason) && denyReason != null)
-            _popup.PopupClient(Loc.GetString(denyReason), uid, args.Actor);
+            DescentDenied(uid, denyReason);
+    }
+
+    /// <summary>
+    /// A console refused a descent request. The server override makes the console
+    /// speak <paramref name="denyReason"/> out loud in local IC chat — the console
+    /// says why, like a person would. The client does nothing here (chat is
+    /// server-authoritative), so the predicted run stays silent.
+    /// </summary>
+    protected virtual void DescentDenied(EntityUid console, string denyReason)
+    {
     }
 
     /// <summary>
@@ -126,6 +143,14 @@ public abstract partial class CESharedDescentSystem : EntitySystem
             return false;
         }
 
+        // An active planetary shield blocks conventional entry outright. Networked flag,
+        // so the client predicts the same refusal the moment the pilot clicks.
+        if (TryComp<CEPlanetShieldComponent>(planetUid, out var shield) && shield.Active)
+        {
+            denyReason = "ce-descent-request-shielded";
+            return false;
+        }
+
         var spinup = AddComp<CEDescentSpinupComponent>(gridUid);
         spinup.Planet = planetUid;
         spinup.Start = Timing.CurTime;
@@ -134,11 +159,11 @@ public abstract partial class CESharedDescentSystem : EntitySystem
         return true;
     }
 
-    public static TimeSpan StageDuration(CEDescentStage stage)
+    public static TimeSpan StageDuration(CEDescentStage stage, bool ascent = false)
     {
         return stage switch
         {
-            CEDescentStage.Descending => DescendTime,
+            CEDescentStage.Descending => ascent ? AscendTime : DescendTime,
             CEDescentStage.Vanishing => VanishTime,
             CEDescentStage.Arriving => ArriveTime,
             _ => TimeSpan.Zero,
@@ -146,9 +171,9 @@ public abstract partial class CESharedDescentSystem : EntitySystem
     }
 
     /// <summary>Fraction of <paramref name="stage"/> elapsed since <paramref name="stageStart"/>, clamped.</summary>
-    public float GetStageProgress(CEDescentStage stage, TimeSpan stageStart)
+    public float GetStageProgress(CEDescentStage stage, TimeSpan stageStart, bool ascent = false)
     {
-        var duration = StageDuration(stage);
+        var duration = StageDuration(stage, ascent);
         if (duration <= TimeSpan.Zero)
             return 1f;
 
@@ -166,7 +191,7 @@ public abstract partial class CESharedDescentSystem : EntitySystem
         switch (map.Stage)
         {
             case CEDescentStage.Descending:
-                var p = GetStageProgress(CEDescentStage.Descending, map.StageStart);
+                var p = GetStageProgress(CEDescentStage.Descending, map.StageStart, map.Ascent);
                 return p * p * (3f - 2f * p); // smoothstep: no pop at either end
             case CEDescentStage.Vanishing:
             case CEDescentStage.Arriving:

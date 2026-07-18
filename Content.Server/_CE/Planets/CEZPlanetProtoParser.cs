@@ -4,7 +4,7 @@
  */
 
 using System.Linq;
-using Content.Shared._CE.ZLevels.Mapping.Prototypes;
+using Content.Shared._CE.Planets;
 using Robust.Shared.Console;
 using Robust.Shared.Prototypes;
 using Robust.Shared.Toolshed;
@@ -16,43 +16,43 @@ using Robust.Shared.Utility;
 namespace Content.Server._CE.Planets;
 
 /// <summary>
-/// Toolshed arg parser that accepts only <see cref="CEZLevelMapPrototype"/> ids (zMap prototypes),
-/// so <c>cezspawnplanet</c> autocompletes the available z-stack layouts (Grasslands, Empty5, ...).
+/// Toolshed arg parser that accepts only <see cref="CEZPlanetPrototype"/> ids (cezPlanet
+/// prototypes), so <c>cezspawnplanet</c> autocompletes the available z-stack layouts.
 /// </summary>
-public sealed partial class CEZMapProtoParser : CustomTypeParser<ProtoId<CEZLevelMapPrototype>>
+public sealed partial class CEZPlanetProtoParser : CustomTypeParser<ProtoId<CEZPlanetPrototype>>
 {
     [Dependency] private IPrototypeManager _proto = default!;
 
-    public override bool TryParse(ParserContext ctx, out ProtoId<CEZLevelMapPrototype> result)
+    public override bool TryParse(ParserContext ctx, out ProtoId<CEZPlanetPrototype> result)
     {
         result = default;
 
         var word = ctx.GetWord(ParserContext.IsToken);
-        if (word is not null && _proto.HasIndex<CEZLevelMapPrototype>(word))
+        if (word is not null && _proto.HasIndex<CEZPlanetPrototype>(word))
         {
-            result = new ProtoId<CEZLevelMapPrototype>(word);
+            result = new ProtoId<CEZPlanetPrototype>(word);
             return true;
         }
 
-        ctx.Error = new NotAZMapPrototype(word ?? "[null]");
+        ctx.Error = new NotAZPlanetPrototype(word ?? "[null]");
         return false;
     }
 
     public override CompletionResult TryAutocomplete(ParserContext ctx, CommandArgument? arg)
     {
-        var options = _proto.EnumeratePrototypes<CEZLevelMapPrototype>()
+        var options = _proto.EnumeratePrototypes<CEZPlanetPrototype>()
             .Select(p => new CompletionOption(p.ID));
 
         return CompletionResult.FromHintOptions(
             options,
-            ToolshedCommand.GetArgHint(arg, typeof(ProtoId<CEZLevelMapPrototype>)));
+            ToolshedCommand.GetArgHint(arg, typeof(ProtoId<CEZPlanetPrototype>)));
     }
 }
 
-public sealed class NotAZMapPrototype(string proto) : ConError
+public sealed class NotAZPlanetPrototype(string proto) : ConError
 {
     public override FormattedMessage DescribeInner()
     {
-        return FormattedMessage.FromUnformatted($"{proto} is not a zMap (CEZLevelMapPrototype) id");
+        return FormattedMessage.FromUnformatted($"{proto} is not a cezPlanet (CEZPlanetPrototype) id");
     }
 }

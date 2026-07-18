@@ -1,0 +1,17 @@
+- type: entity
+  id: CEShieldBeam
+  name: shield beam
+  description: You're pretty sure you shouldn't be standing next to this.
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: Sprite
+    sprite: /Textures/_CE/Effects/shield_beam.rsi
+  - type: PointLight
+    radius: 12
+    energy: 6
+    color: "#dff2ff"
+    castShadows: false
+  - type: Physics
+    canCollide: false
+    bodyType: Static
+  - type: CEShieldBeam

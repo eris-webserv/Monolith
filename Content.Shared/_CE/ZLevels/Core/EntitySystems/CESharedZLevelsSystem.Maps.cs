@@ -17,6 +17,20 @@ namespace Content.Shared._CE.ZLevels.Core.EntitySystems;
 public abstract partial class CESharedZLevelsSystem
 {
     /// <summary>
+    /// Returns the z-level depth of the given map within its network, if it belongs to one.
+    /// </summary>
+    [PublicAPI]
+    public bool TryGetMapDepth(EntityUid mapUid, out int depth)
+    {
+        depth = 0;
+
+        if (!TryGetMapNetwork(mapUid, out var network))
+            return false;
+
+        return network.Comp.ZLevelByEntity.TryGetValue(mapUid, out depth);
+    }
+
+    /// <summary>
     /// Checks whether the map is in the zLevels network. If so, returns true and the current depth + Entity of the current zLevels network.
     /// </summary>
     [PublicAPI]

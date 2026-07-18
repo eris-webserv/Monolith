@@ -611,6 +611,17 @@ public sealed partial class CEZLevelsSystem
 
             if (topTransit.UpperMap is not { } topUpper)
             {
+                // Open sky with nothing above: the climb clamps here — but sustained
+                // pushing against this ceiling is how a ship breaches orbit off a
+                // planet. Announce the push (this runs every tick the pilot holds it);
+                // the descent system owns the breach spool and the ascent theatre, and
+                // does nothing if this network isn't a planet's.
+                if (topTransit.LowerMap is { } openSkyTop)
+                {
+                    var climb = new CEZOpenSkyClimbEvent(grid.Owner, openSkyTop, convoy.Count);
+                    RaiseLocalEvent(grid.Owner, ref climb);
+                }
+
                 progress = 1f;
                 break;
             }
@@ -632,6 +643,17 @@ public sealed partial class CEZLevelsSystem
 
                 if (!TryMapUp(topUpper, out _))
                 {
+                    // Still the top: the ship is capped at the highest level's plane.
+                    // Sustained pushing against this ceiling is how a ship breaches
+                    // orbit off a planet — same announcement as the open-sky clamp
+                    // above, just from the gap under the top level instead of the gap
+                    // over it (liftoffs from the top level live here, since
+                    // TryEnterTransit never creates a gap with nothing above it). The
+                    // descent system owns the breach spool and does nothing if this
+                    // network isn't a planet's.
+                    var climb = new CEZOpenSkyClimbEvent(grid.Owner, topUpper, convoy.Count);
+                    RaiseLocalEvent(grid.Owner, ref climb);
+
                     progress = 1f;
                     break;
                 }
@@ -950,3 +972,18 @@ public record struct CEZNetworkExpandRequestEvent(
     Entity<CEZMapNetworkComponent> Network,
     EntityUid EdgeMap,
     bool Up);
+
+/// <summary>
+/// Raised on a convoy's lead grid every tick it climbs against the open-sky top of a
+/// z-network (top gap, no level above, expansion already declined). The transit
+/// integrator keeps the grid clamped at the top regardless — listeners decide whether
+/// sustained pushing means anything (planet ascent does: it breaches orbit).
+/// </summary>
+/// <param name="Grid">The convoy's lead grid, still on its transit map.</param>
+/// <param name="TopLevel">The z-level map directly below the open sky.</param>
+/// <param name="ConvoyLayers">How many transit layers the convoy spans.</param>
+[ByRefEvent]
+public record struct CEZOpenSkyClimbEvent(
+    EntityUid Grid,
+    EntityUid TopLevel,
+    int ConvoyLayers);

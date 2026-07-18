@@ -139,6 +139,10 @@ public abstract partial class CESharedZLevelsSystem
         if (!Resolve(entity, ref entity.Comp, false))
             return;
 
+        // do not accidentally wake up a grid (we have transit for that)
+        if (_gridQuery.HasComp(entity) || _mapQuery.HasComp(entity))
+            return;
+
         if (_activeBodies.Contains(entity))
             return;
 

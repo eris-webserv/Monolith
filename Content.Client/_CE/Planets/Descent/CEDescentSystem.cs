@@ -59,7 +59,13 @@ public sealed partial class CEDescentSystem : CESharedDescentSystem
             return;
         }
 
-        _audio.PlayGlobal(StunSound, Filter.Local(), false, AudioParams.Default.WithVolume(2f));
+        // Okay, maybe I'll be a bit merciful.
+        var gain = _cfg.GetCVar(CCVars.AmbienceVolume);
+        if (gain <= 0f)
+            return;
+
+        _audio.PlayGlobal(StunSound, Filter.Local(), false,
+            AudioParams.Default.WithVolume(2f + SharedAudioSystem.GainToVolume(gain)));
     }
 
     /// <summary>

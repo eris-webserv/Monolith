@@ -1,0 +1,14 @@
+# Grasslands planet used as the generated ground layer for z-level planets
+# spawned via `cezspawnplanet`. The Grasslands biome template already spawns
+# MonoPlanetmapOreBase rock formations, so ore is minable on the surface.
+- type: planet
+  id: MonoGrasslands
+  biome: Grasslands
+  mapName: shuttle-destination-grasslands-planet
+  mapLight: "#C8FDFF"
+  atmosphere:
+    volume: 2500
+    temperature: 293.15 # 20 celsius
+    moles:
+    - 21.824879
+    - 82.10312

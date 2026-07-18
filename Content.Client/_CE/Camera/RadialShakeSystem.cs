@@ -36,8 +36,14 @@ public sealed partial class RadialShakeSystem : EntitySystem
 
     private void OnRadialShake(RadialShakeEvent ev)
     {
+        // Diagnostic for the shield-fire feedback chain: confirms the network
+        // event actually reached this client and who it's being applied to.
+        Log.Info($"RadialShakeEvent received: duration={ev.Duration}, amplitude={ev.Amplitude}, localEntity={_player.LocalEntity}");
+
         if (_player.LocalEntity is { } player)
             Shake(player, ev.Duration, ev.Amplitude);
+        else
+            Log.Warning("RadialShakeEvent received but there is no local entity to shake.");
     }
 
     /// <summary>

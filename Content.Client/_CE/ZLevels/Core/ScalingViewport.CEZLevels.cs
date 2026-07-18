@@ -6,6 +6,7 @@
 using System.Numerics;
 using Content.Client._CE.ZLevels.Core;
 using Content.Shared._CE.Planets.Descent;
+using Content.Shared._CE.Planets.Shields;
 using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Content.Shared.Maps;
@@ -169,17 +170,49 @@ public sealed partial class ScalingViewport
             riderRide = riderDescent.Stage switch
             {
                 CEDescentStage.Descending => _descent.GetStageProgress(
-                    CEDescentStage.Descending, riderDescent.StageStart),
+                    CEDescentStage.Descending, riderDescent.StageStart, riderDescent.Ascent),
                 CEDescentStage.Vanishing or CEDescentStage.Arriving => 1f,
                 _ => 0f,
             };
         }
 
         var riderOriginPass = false;
+        Dictionary<EntityUid, float>? riderOriginChain = null;
         if (riderDescent?.OriginMap is { } riderOrigin && !_entityManager.Deleted(riderOrigin))
         {
             _zPasses.Add((riderOrigin, -0.0005f, false, false));
             riderOriginPass = true;
+
+            // An ascending rider's origin is the network's TOP level, not empty
+            // space: the rest of the planet's stack is still down there and has to
+            // keep rendering (and receding) under the climb, or the ground blinks
+            // out the moment the hop lands the ship on its pseudo-map. Walk the real
+            // levels below the origin into the pass list — same stops as the normal
+            // below-walk (a cloud or ground layer ends the view) — and remember each
+            // map's whole-level offset so the eye build below can drive the entire
+            // ladder off the one ride clock instead of its static pass depth.
+            if (riderDescent.Ascent)
+            {
+                riderOriginChain = new Dictionary<EntityUid, float> { [riderOrigin] = 0f };
+
+                var chainCurrent = riderOrigin;
+                var chainOffset = 0f;
+                for (var i = 0; i < CESharedZLevelsSystem.MaxZLevelsBelowRendering; i++)
+                {
+                    if (_entityManager.HasComponent<CEZCloudLayerComponent>(chainCurrent) ||
+                        _entityManager.HasComponent<CEZGroundLayerComponent>(chainCurrent) ||
+                        !TryFindEmptyTiles(chainCurrent))
+                        break;
+
+                    if (!_zLevels.TryMapOffset(chainCurrent, -1, out var chainBelow))
+                        break;
+
+                    chainCurrent = chainBelow.Owner;
+                    chainOffset += 1f;
+                    _zPasses.Add((chainCurrent, -chainOffset - 0.0005f, false, false));
+                    riderOriginChain[chainCurrent] = chainOffset;
+                }
+            }
         }
 
         // When riding a grid between two levels, the world below starts a fractional
@@ -252,7 +285,10 @@ public sealed partial class ScalingViewport
                     break;
                 }
 
-                if (_entityManager.HasComponent<CEZGroundLayerComponent>(current.Value))
+                // A punctured layer in the chain keeps the walk alive: holes stacked
+                // over holes let you see two or more levels down.
+                if (_entityManager.HasComponent<CEZGroundLayerComponent>(current.Value) &&
+                    !_entityManager.HasComponent<CEZPuncturedGroundComponent>(current.Value))
                 {
                     occludeBelowDepth = depthCursor;
                     break;
@@ -468,12 +504,32 @@ public sealed partial class ScalingViewport
                 // the old depth-driven curve); the lunge is backloaded (ride^4) so
                 // its violent tail lands under the near-opaque cover. The pass depth
                 // stays a bare epsilon purely so ordering keeps it under the ship.
-                if (riderOriginPass && riderDescent != null && riderDescent.OriginMap == mapUid)
+                if (riderOriginPass && riderDescent != null)
                 {
-                    var smooth = riderRide * riderRide * (3f - 2f * riderRide);
-                    var zoomLevels = riderDescentZoomLevels * smooth
-                        + riderVanishZoomLevels * MathF.Pow(riderRide, 4f);
-                    zScale = MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink, -zoomLevels);
+                    var riderChainOffset = 0f;
+                    var riderChainPass = riderDescent.OriginMap == mapUid ||
+                        riderOriginChain != null &&
+                        riderOriginChain.TryGetValue(mapUid, out riderChainOffset);
+
+                    if (riderChainPass)
+                    {
+                        var smooth = riderRide * riderRide * (3f - 2f * riderRide);
+                        var zoomLevels = riderDescentZoomLevels * smooth
+                            + riderVanishZoomLevels * MathF.Pow(riderRide, 4f);
+
+                        // An ascending rider's world falls AWAY instead of charging
+                        // in: the same curve with the exponent un-flipped, plus one
+                        // whole level of shrink baked in up front. The breach happens
+                        // a full gap above the top level, so the origin pass starts
+                        // exactly as small as the transit view it replaces and
+                        // recedes from there. Chain passes under the origin ride the
+                        // same clock one extra shrink step per level down, so the
+                        // whole ladder recedes together with no seam at the hop.
+                        zScale = riderDescent.Ascent
+                            ? MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink,
+                                1f + riderChainOffset + zoomLevels)
+                            : MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink, -zoomLevels);
+                    }
                 }
 
                 var zEye = new ZEye(lowestDepth, depth, highestDepth)
@@ -613,7 +669,7 @@ public sealed partial class ScalingViewport
             var ride = descentMap.Stage switch
             {
                 CEDescentStage.Descending => _descent.GetStageProgress(
-                    CEDescentStage.Descending, descentMap.StageStart),
+                    CEDescentStage.Descending, descentMap.StageStart, descentMap.Ascent),
                 CEDescentStage.Vanishing or CEDescentStage.Arriving => 1f,
                 _ => 0f,
             };
@@ -625,7 +681,12 @@ public sealed partial class ScalingViewport
             // at stage start. Same occlusion rule as transit ships, too: nothing
             // draws under a deck the observer can't see through.
             var descentDepth = -_descent.GetDescentDepth(descentMap) - 0.001f;
-            if (occludeBelowDepth is { } occluded && descentDepth < occluded - occludeBand)
+
+            // Ascending hulls are ABOVE the observer, so the below-deck cull doesn't
+            // apply — the own-layer re-render already hides them behind walls and
+            // roofs. Everything else (shrink, haze, fade) reads the same for a hull
+            // receding upward as for one sinking away, so the pass is shared.
+            if (!descentMap.Ascent && occludeBelowDepth is { } occluded && descentDepth < occluded - occludeBand)
                 continue;
 
             if (MakeZEye(descentUid, descentDepth) is { } descentEye)

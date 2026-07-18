@@ -5,10 +5,12 @@
 
 using System.Numerics;
 using Content.Server._CE.ZLevels.Core;
+using Content.Server.Chat.Systems;
 using Content.Server.Shuttles.Systems;
 using Content.Shared._CE.Planets;
 using Content.Shared._CE.Planets.Descent;
 using Content.Shared._CE.ZLevels.Core.Components;
+using Content.Shared.Chat;
 using Content.Shared.Damage;
 using Content.Shared.Mobs.Components;
 using Content.Shared.Parallax;
@@ -37,23 +39,25 @@ namespace Content.Server._CE.Planets.Descent;
 /// network membership): the client pass builder degrades it to a single own-map pass with
 /// parallax, and the descent visuals hang off <see cref="CEDescentMapComponent"/> alone.
 /// </summary>
-public sealed class CEDescentSystem : CESharedDescentSystem
+public sealed partial class CEDescentSystem : CESharedDescentSystem
 {
-    [Dependency] private readonly SharedMapSystem _map = default!;
-    [Dependency] private readonly MetaDataSystem _meta = default!;
-    [Dependency] private readonly SharedTransformSystem _transform = default!;
-    [Dependency] private readonly SharedPhysicsSystem _physics = default!;
-    [Dependency] private readonly ShuttleSystem _shuttle = default!;
-    [Dependency] private readonly ShuttleConsoleSystem _console = default!;
-    [Dependency] private readonly DockingSystem _dockSystem = default!;
-    [Dependency] private readonly ThrusterSystem _thruster = default!;
-    [Dependency] private readonly PvsOverrideSystem _pvsOverride = default!;
-    [Dependency] private readonly CEZLevelsSystem _zLevels = default!;
-    [Dependency] private readonly SharedStunSystem _stun = default!;
-    [Dependency] private readonly IRobustRandom _random = default!;
+    [Dependency] private SharedMapSystem _map = default!;
+    [Dependency] private MetaDataSystem _meta = default!;
+    [Dependency] private SharedTransformSystem _transform = default!;
+    [Dependency] private SharedPhysicsSystem _physics = default!;
+    [Dependency] private ShuttleSystem _shuttle = default!;
+    [Dependency] private ShuttleConsoleSystem _console = default!;
+    [Dependency] private DockingSystem _dockSystem = default!;
+    [Dependency] private ThrusterSystem _thruster = default!;
+    [Dependency] private PvsOverrideSystem _pvsOverride = default!;
+    [Dependency] private CEZLevelsSystem _zLevels = default!;
+    [Dependency] private SharedStunSystem _stun = default!;
+    [Dependency] private IRobustRandom _random = default!;
+    [Dependency] private ChatSystem _chat = default!;
     public override void Initialize()
     {
         base.Initialize();
+        InitializeAscent();
 
         SubscribeLocalEvent<CEDescentComponent, ComponentShutdown>(OnDescentShutdown);
         SubscribeLocalEvent<CEDescentSpinupComponent, ComponentStartup>(OnSpinupStartup);
@@ -61,6 +65,15 @@ public sealed class CEDescentSystem : CESharedDescentSystem
         SubscribeLocalEvent<CEDescentStunnedComponent, ComponentShutdown>(OnStunnedShutdown);
         SubscribeLocalEvent<ShuttleConsoleComponent, CEDescentRequestMessage>(OnDescentRequest);
         SubscribeLocalEvent<ThrusterComponent, DamageChangedEvent>(OnThrusterDamaged);
+    }
+
+    /// <summary>
+    /// A refused descent request: the console announces the reason out loud in
+    /// local chat, the same way a person speaks — no popups, no readout hacks.
+    /// </summary>
+    protected override void DescentDenied(EntityUid console, string denyReason)
+    {
+        _chat.TrySendInGameICMessage(console, Loc.GetString(denyReason), InGameICChatType.Speak, hideChat: false);
     }
 
     /// <summary>
@@ -96,8 +109,34 @@ public sealed class CEDescentSystem : CESharedDescentSystem
         // Charging grids fly solo (everything undocks at spinup start), so only the
         // charging grid's own engines matter.
         if (HasComp<CEDescentSpinupComponent>(thrusterGrid))
+        {
             AbortCharge(thrusterGrid);
+            return;
+        }
+
+        // A launch telegraph is the opposite: the whole docked set breaches together,
+        // so ANY member's engines are the drive's engines. Check the cheap direct hit
+        // first before sweeping the docked set for a telegraphing lead.
+        if (HasComp<CEAscentWarningComponent>(thrusterGrid))
+        {
+            AbortAscentWarning(thrusterGrid);
+            return;
+        }
+
+        _thrusterDockScan.Clear();
+        _shuttle.GetAllDockedShuttles(thrusterGrid, _thrusterDockScan);
+        foreach (var member in _thrusterDockScan)
+        {
+            if (HasComp<CEAscentWarningComponent>(member))
+            {
+                AbortAscentWarning(member);
+                return;
+            }
+        }
     }
+
+    /// <summary>Scratch set for <see cref="OnThrusterDamaged"/>'s docked-set sweep.</summary>
+    private readonly HashSet<EntityUid> _thrusterDockScan = new();
 
     /// <summary>
     /// Kills a running charge and discharges the drive violently. The grid gets a
@@ -216,6 +255,8 @@ public sealed class CEDescentSystem : CESharedDescentSystem
     {
         base.Update(frameTime);
 
+        UpdateAscent();
+
         // Console spinup theatre → hand over to the descent proper once it elapses.
         var spinups = EntityQueryEnumerator<CEDescentSpinupComponent, MapGridComponent>();
         while (spinups.MoveNext(out var uid, out var spinup, out var grid))
@@ -257,7 +298,7 @@ public sealed class CEDescentSystem : CESharedDescentSystem
         var query = EntityQueryEnumerator<CEDescentComponent>();
         while (query.MoveNext(out var uid, out var descent))
         {
-            if (Timing.CurTime < descent.StageStart + StageDuration(descent.Stage))
+            if (Timing.CurTime < descent.StageStart + StageDuration(descent.Stage, descent.Ascent))
                 continue;
 
             AdvanceStage((uid, descent));
@@ -274,7 +315,12 @@ public sealed class CEDescentSystem : CESharedDescentSystem
                 break;
 
             case CEDescentStage.Vanishing:
-                Warp(ent);
+                // Same whiteout, opposite hop: descents dive INTO the z machinery,
+                // ascents leave it for the planet's space map.
+                if (ent.Comp.Ascent)
+                    WarpAscent(ent);
+                else
+                    Warp(ent);
                 break;
 
             case CEDescentStage.Arriving:
@@ -296,11 +342,27 @@ public sealed class CEDescentSystem : CESharedDescentSystem
             return;
         }
 
+        ent.Comp.DescentMap = CreatePseudoMap(ent, originMap, $"Descent of {MetaData(ent).EntityName}");
+        MoveGridSet(ent.Comp.GridSet, ent.Comp.DescentMap.Value);
+
+        SetStage(ent, CEDescentStage.Descending);
+    }
+
+    /// <summary>
+    /// Builds the bare pseudo-map both directions of the theatre ride: planet snapshot
+    /// for the backdrop, the target network's environment, and the origin map's
+    /// light/parallax so the hop is invisible. The caller moves the set on and sets the
+    /// stage; <see cref="CEDescentComponent.Ascent"/> is mirrored here so the client
+    /// pass builder knows which way the world should recede.
+    /// </summary>
+    private EntityUid CreatePseudoMap(Entity<CEDescentComponent> ent, EntityUid originMap, string name)
+    {
         var mapUid = _map.CreateMap(out _);
 
         var descentMap = AddComp<CEDescentMapComponent>(mapUid);
         descentMap.OriginMap = originMap;
         descentMap.Grid = ent;
+        descentMap.Ascent = ent.Comp.Ascent;
 
         // Sky visuals: snapshot, not a reference — the live planet entity stays on the
         // origin map and may leave the riders' PVS after the move.
@@ -312,7 +374,7 @@ public sealed class CEDescentSystem : CESharedDescentSystem
         }
 
         // Same environment as the target network's levels (atmosphere etc.), mirroring
-        // CreateTransitMap: the crew is already in the planet's air column.
+        // CreateTransitMap: the crew is in the planet's air column on both legs.
         if (TryComp<CEZMapNetworkComponent>(ent.Comp.Network, out var network) &&
             network.Components.Count > 0)
         {
@@ -327,7 +389,7 @@ public sealed class CEDescentSystem : CESharedDescentSystem
 
         // Once the ship hops over, this map is the deepest pass on bystanders'
         // screens and owns the skybox their own pass no longer repaints — same
-        // sky as home, or the backdrop pops to black for the whole descent.
+        // sky as home, or the backdrop pops to black for the whole ride.
         if (TryComp<ParallaxComponent>(originMap, out var originParallax))
         {
             var parallax = EnsureComp<ParallaxComponent>(mapUid);
@@ -335,12 +397,8 @@ public sealed class CEDescentSystem : CESharedDescentSystem
             Dirty(mapUid, parallax);
         }
 
-        _meta.SetEntityName(mapUid, $"Descent of {MetaData(ent).EntityName}");
-
-        ent.Comp.DescentMap = mapUid;
-        MoveGridSet(ent.Comp.GridSet, mapUid);
-
-        SetStage(ent, CEDescentStage.Descending);
+        _meta.SetEntityName(mapUid, name);
+        return mapUid;
     }
 
     /// <summary>

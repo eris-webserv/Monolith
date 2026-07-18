@@ -8,6 +8,7 @@ using Content.Client.Parallax;
 using Content.Client.Viewport;
 using Content.Shared._CE.Planets;
 using Content.Shared._CE.Planets.Descent;
+using Content.Shared._CE.Planets.Shields;
 using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Robust.Client.GameObjects;
@@ -41,6 +42,29 @@ public sealed partial class CEPlanetOverlay : Overlay
     // lighting/darkness never dims them (same reason the parallax skybox is unshaded).
     private readonly ShaderInstance _unshaded;
 
+    // Planetary shield skin: a procedural hex dome (see shield_skin.swsl) drawn over the
+    // disc while the planet's shield is up. InstanceUnique because the formation progress
+    // is a per-planet, per-frame parameter.
+    private readonly ShaderInstance _shieldSkin;
+
+    /// <summary>How long the field visually crawls across the disc after activation
+    /// (and, played in reverse, dissolves off it after deactivation).</summary>
+    private static readonly TimeSpan ShieldFormationTime = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Field colour; alpha scales the whole effect. Kept deep and dim — the
+    /// field should read as a dark energy skin over the art, not a bright hologram.</summary>
+    private static readonly Color ShieldColor = Color.FromHex("#2e8fb8").WithAlpha(0.7f);
+
+    /// <summary>
+    /// Per-planet local animation state for the shield skin: formation progress in
+    /// [0, 1] plus the local realtime it was last advanced. Entirely clientside — the
+    /// clock starts when *this client* observes <see cref="CEPlanetShieldComponent.Active"/>
+    /// flip, not when the server stamped it, so the crawl always plays out in full and
+    /// at the right speed regardless of ping. Planets first seen with the field already
+    /// up snap straight to formed (no replay every time one enters PVS).
+    /// </summary>
+    private readonly Dictionary<EntityUid, (float Progress, TimeSpan Last)> _shieldAnim = new();
+
     public override OverlaySpace Space => OverlaySpace.WorldSpaceBelowWorld;
 
     public CEPlanetOverlay()
@@ -52,7 +76,9 @@ public sealed partial class CEPlanetOverlay : Overlay
         _transform = _entManager.System<SharedTransformSystem>();
         _zLevel = _entManager.System<CESharedZLevelsSystem>();
         _descent = _entManager.System<CESharedDescentSystem>();
-        _unshaded = IoCManager.Resolve<IPrototypeManager>().Index<ShaderPrototype>("unshaded").Instance();
+        var protoMan = IoCManager.Resolve<IPrototypeManager>();
+        _unshaded = protoMan.Index<ShaderPrototype>("unshaded").Instance();
+        _shieldSkin = protoMan.Index<ShaderPrototype>("CEPlanetShieldSkin").InstanceUnique();
     }
 
     protected override bool BeforeDraw(in OverlayDrawArgs args)
@@ -110,7 +136,7 @@ public sealed partial class CEPlanetOverlay : Overlay
         var pxPerWorld = (vp.WorldToLocal(worldCentre + Vector2.UnitX) - centreLocal).Length();
 
         var query = _entManager.EntityQueryEnumerator<CEPlanetComponent, TransformComponent>();
-        while (query.MoveNext(out _, out var planet, out var xform))
+        while (query.MoveNext(out var uid, out var planet, out var xform))
         {
             if (xform.MapID != args.MapId)
                 continue;
@@ -221,6 +247,37 @@ public sealed partial class CEPlanetOverlay : Overlay
             var angle = new Angle(time * planet.SpinRate);
             var box = Box2.CenteredAround(drawPos, size);
             handle.DrawTextureRect(tex, new Box2Rotated(box, angle, drawPos));
+
+            // Shield skin: procedural hex dome (shader-only — see shield_skin.swsl) hugging
+            // the disc while the field is up. Drawn unrotated: it's a field, not terrain, so
+            // it must not spin with the surface. The quad matches the sprite exactly so the
+            // field sits at the planet's radius, and the sprite's texel width is fed to the
+            // shader so the effect renders on the same pixel grid as the art beneath it.
+            // Formation/collapse progress is a purely local clock advanced toward the
+            // networked Active flag each frame: crawl in when it flips on, the exact same
+            // crawl in reverse when it flips off. A flip mid-animation just reverses from
+            // wherever the front currently is. First observation always seeds at 0 so a
+            // freshly added (= freshly activated) shield plays its formation crawl.
+            if (_entManager.TryGetComponent(uid, out CEPlanetShieldComponent? shield))
+            {
+                var now = _timing.RealTime;
+                if (!_shieldAnim.TryGetValue(uid, out var anim))
+                    anim = (0f, now);
+
+                var step = (float) ((now - anim.Last).TotalSeconds / ShieldFormationTime.TotalSeconds);
+                var formed = Math.Clamp(anim.Progress + (shield.Active ? step : -step), 0f, 1f);
+                _shieldAnim[uid] = (formed, now);
+
+                if (formed > 0f)
+                {
+                    _shieldSkin.SetParameter("progress", formed);
+                    _shieldSkin.SetParameter("skin_color", ShieldColor);
+                    _shieldSkin.SetParameter("pixel_grid", (float) tex.Width);
+                    handle.UseShader(_shieldSkin);
+                    handle.DrawTextureRect(Texture.White, Box2.CenteredAround(drawPos, size));
+                    handle.UseShader(_unshaded);
+                }
+            }
         }
 
         // Descent pseudo-map: the ship is falling toward a planet that lives on ANOTHER
@@ -234,7 +291,11 @@ public sealed partial class CEPlanetOverlay : Overlay
             descent.PlanetSprite is { } snapshot)
         {
             var tex = _sprite.Frame0(snapshot);
-            var swell = 1f + 0.15f * _descent.GetDescentDepth(descent);
+            // Descent: swells as the ship sinks. Ascent runs it backwards — swollen at
+            // the breach, relaxing to the parked in-zone scale by the warp, so the
+            // Arriving fade-in over the real planet matches seamlessly.
+            var depth = _descent.GetDescentDepth(descent);
+            var swell = descent.Ascent ? 1f + 0.15f * (1f - depth) : 1f + 0.15f * depth;
             var size = tex.Size / (float) EyeManager.PixelsPerMeter * descent.PlanetScale * swell;
 
             var angle = new Angle(time * descent.PlanetSpinRate);

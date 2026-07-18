@@ -35,6 +35,14 @@ public sealed partial class CEDescentMapComponent : Component
     [ViewVariables, AutoNetworkedField]
     public CEDescentStage Stage = CEDescentStage.Descending;
 
+    /// <summary>
+    /// Mirror of the lead grid's <see cref="CEDescentComponent.Ascent"/>. On an ascent
+    /// the "origin" is the top z-level the ship breached away from: bystanders there
+    /// watch the hull shrink upward instead of downward.
+    /// </summary>
+    [ViewVariables, AutoNetworkedField]
+    public bool Ascent;
+
     /// <summary>Server curtime when <see cref="Stage"/> was entered.</summary>
     [ViewVariables, AutoNetworkedField]
     public TimeSpan StageStart;
