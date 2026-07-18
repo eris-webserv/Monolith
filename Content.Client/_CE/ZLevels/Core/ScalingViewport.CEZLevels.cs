@@ -285,10 +285,7 @@ public sealed partial class ScalingViewport
                     break;
                 }
 
-                // A punctured layer in the chain keeps the walk alive: holes stacked
-                // over holes let you see two or more levels down.
-                if (_entityManager.HasComponent<CEZGroundLayerComponent>(current.Value) &&
-                    !_entityManager.HasComponent<CEZPuncturedGroundComponent>(current.Value))
+                if (_entityManager.HasComponent<CEZGroundLayerComponent>(current.Value))
                 {
                     occludeBelowDepth = depthCursor;
                     break;

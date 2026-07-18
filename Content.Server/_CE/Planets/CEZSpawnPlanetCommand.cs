@@ -3,7 +3,6 @@
  * https://github.com/space-wizards/space-station-14/blob/master/LICENSE.TXT
  */
 
-using Content.Server._CE.Planets.Caves;
 using Content.Server._CE.ZLevels.Core;
 using Content.Server._DV.Planet;
 using Content.Server.Administration;
