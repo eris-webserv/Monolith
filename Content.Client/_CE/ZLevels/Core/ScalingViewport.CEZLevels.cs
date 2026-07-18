@@ -5,6 +5,8 @@
 
 using System.Numerics;
 using Content.Client._CE.ZLevels.Core;
+using Content.Shared._CE.Planets.Descent;
+using Content.Shared._CE.Planets.Shields;
 using Content.Shared._CE.ZLevels.Core.Components;
 using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Content.Shared.Maps;
@@ -26,6 +28,7 @@ public sealed partial class ScalingViewport
     [Dependency] private IPrototypeManager _prototypeManager = default!;
 
     private CEClientZLevelsSystem? _zLevels;
+    private CESharedDescentSystem? _descent;
     private SharedMapSystem? _mapSystem;
 
     private EntityQuery<TransformComponent>? _xformQuery;
@@ -115,6 +118,7 @@ public sealed partial class ScalingViewport
 
         // Cache systems and components
         _zLevels ??= _entityManager.System<CEClientZLevelsSystem>();
+        _descent ??= _entityManager.System<CESharedDescentSystem>();
         _mapSystem ??= _entityManager.System<SharedMapSystem>();
 
         if (_player.LocalEntity is null)
@@ -132,6 +136,84 @@ public sealed partial class ScalingViewport
         var playerMap = playerXform.MapUid.Value;
 
         _zPasses.Clear();
+
+        // Rider on a descent pseudo-map: their own deck renders at normal scale — the
+        // fall shows in the world below, not in their own sprite. The bystander half —
+        // the shrinking ship seen from the origin map — is the synthetic descent pass
+        // added below.
+        _entityManager.TryGetComponent(playerMap, out CEDescentMapComponent? riderDescent);
+
+        // The departed world stays around a descending rider: the pseudo-map hop is an
+        // implementation detail (it only exists so bystanders get a scalable pass) and
+        // must be invisible from inside. The origin map joins the pass list pinned a
+        // bare epsilon below the rider's own deck — that depth is ORDERING ONLY. The
+        // zoom is overridden at eye-build time: a plunge reads as the world below
+        // charging UP at the rider, not the world timidly stepping one z-level back —
+        // shrink is the bystanders' half, not ours.
+        //
+        // Same single-clock principle as the bystander composite below: EVERYTHING
+        // the rider sees — zoom curve and whiteout cover alike — keys off the one
+        // Descending clock and is finished by its end. The cover starts midway
+        // through the ride and is FULL white before the server flips to Vanishing, so
+        // the late-replicating flip (and the warp's map move behind it) changes
+        // nothing on screen — no Stage 1.5 seam, by construction. The zoom spends
+        // riderDescentZoomLevels over the visible ride (smoothstep — the old depth
+        // curve, unchanged) plus a riderVanishZoomLevels lunge backloaded (ride^4) so
+        // its violent tail lands under the near-opaque fog: it only ever reads as
+        // ground-rush, never as a legible map scale.
+        const float riderDescentZoomLevels = 2f;
+        const float riderVanishZoomLevels = 5f;
+        const float riderCoverStartRide = 0.5f;
+        var riderRide = 0f;
+        if (riderDescent != null)
+        {
+            riderRide = riderDescent.Stage switch
+            {
+                CEDescentStage.Descending => _descent.GetStageProgress(
+                    CEDescentStage.Descending, riderDescent.StageStart, riderDescent.Ascent),
+                CEDescentStage.Vanishing or CEDescentStage.Arriving => 1f,
+                _ => 0f,
+            };
+        }
+
+        var riderOriginPass = false;
+        Dictionary<EntityUid, float>? riderOriginChain = null;
+        if (riderDescent?.OriginMap is { } riderOrigin && !_entityManager.Deleted(riderOrigin))
+        {
+            _zPasses.Add((riderOrigin, -0.0005f, false, false));
+            riderOriginPass = true;
+
+            // An ascending rider's origin is the network's TOP level, not empty
+            // space: the rest of the planet's stack is still down there and has to
+            // keep rendering (and receding) under the climb, or the ground blinks
+            // out the moment the hop lands the ship on its pseudo-map. Walk the real
+            // levels below the origin into the pass list — same stops as the normal
+            // below-walk (a cloud or ground layer ends the view) — and remember each
+            // map's whole-level offset so the eye build below can drive the entire
+            // ladder off the one ride clock instead of its static pass depth.
+            if (riderDescent.Ascent)
+            {
+                riderOriginChain = new Dictionary<EntityUid, float> { [riderOrigin] = 0f };
+
+                var chainCurrent = riderOrigin;
+                var chainOffset = 0f;
+                for (var i = 0; i < CESharedZLevelsSystem.MaxZLevelsBelowRendering; i++)
+                {
+                    if (_entityManager.HasComponent<CEZCloudLayerComponent>(chainCurrent) ||
+                        _entityManager.HasComponent<CEZGroundLayerComponent>(chainCurrent) ||
+                        !TryFindEmptyTiles(chainCurrent))
+                        break;
+
+                    if (!_zLevels.TryMapOffset(chainCurrent, -1, out var chainBelow))
+                        break;
+
+                    chainCurrent = chainBelow.Owner;
+                    chainOffset += 1f;
+                    _zPasses.Add((chainCurrent, -chainOffset - 0.0005f, false, false));
+                    riderOriginChain[chainCurrent] = chainOffset;
+                }
+            }
+        }
 
         // When riding a grid between two levels, the world below starts a fractional
         // depth away instead of a whole one, and slides continuously as the grid moves.
@@ -282,6 +364,13 @@ public sealed partial class ScalingViewport
             }
         }
 
+        // Descent pseudo-maps NEVER join the pass list: deep enough to be the bottom
+        // pass, a pseudo-map would own DrawParallax — and the parallax and planet
+        // overlays would then render under its SCALED eye, shrinking the whole sky
+        // along with the hull. They composite over the finished scene instead (see
+        // the airborne descent section after the pass loop); the observer's own pass
+        // stays the deepest real pass and keeps the backdrop unscaled.
+
         // Painter's algorithm.
         _zPasses.Sort(static (a, b) =>
         {
@@ -350,7 +439,38 @@ public sealed partial class ScalingViewport
 
             if (mapUid == playerMap && depth == 0f)
             {
-                viewport.Eye = _fallbackEye;
+                // The ZEye branch is forced whenever ANY pass rendered underneath
+                // this one (rider origin pass, descent pseudo-map under a bystander,
+                // below chain): the raw fallback eye draws parallax, which would
+                // paint the skybox over everything already rendered. This is exactly
+                // how a bystander's descent pseudo-pass used to vanish the instant
+                // the ship hopped maps — their own pass repainted the sky over it.
+                if (riderOriginPass || lowestDepth < 0f)
+                {
+                    // Own eye at normal scale (a descending rider's fall shows in
+                    // the receding origin pass below, never in their own deck),
+                    // wrapped in a ZEye so downstream
+                    // gating (parallax, blur) sees a proper pass. Parallax draws
+                    // here only when nothing renders underneath — otherwise the
+                    // deepest pass owns the skybox, and repainting it here would
+                    // erase those passes. (Descent pseudo-maps are not passes at
+                    // all — they composite over the top — so a lone bystander never
+                    // takes this branch and keeps an unscaled sky.)
+                    viewport.Eye = new ZEye(lowestDepth, 0f, highestDepth)
+                    {
+                        Position = _fallbackEye.Position,
+                        DrawFov = _fallbackEye.DrawFov,
+                        DrawLight = _fallbackEye.DrawLight,
+                        DrawParallax = lowestDepth == 0f,
+                        Offset = _fallbackEye.Offset,
+                        Rotation = _fallbackEye.Rotation,
+                        Scale = _fallbackEye.Scale,
+                    };
+                }
+                else
+                {
+                    viewport.Eye = _fallbackEye;
+                }
             }
             else
             {
@@ -371,6 +491,44 @@ public sealed partial class ScalingViewport
                 // integer-depth version of this popped at the seam.
                 var zScale = MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink, -depth);
 
+                // A descending rider's world below charges IN, not away: a negative
+                // exponent flips the shrink rule into magnification that grows with
+                // the fall (1x at ride start — seamless with the pre-warp view). Same
+                // single-clock principle as the bystander composite: the whole curve
+                // is spent by the end of the Descending ride, so the flip to
+                // Vanishing changes nothing on screen — no stage ever touches this
+                // exponent. Base levels follow the ride's smoothstep (identical to
+                // the old depth-driven curve); the lunge is backloaded (ride^4) so
+                // its violent tail lands under the near-opaque cover. The pass depth
+                // stays a bare epsilon purely so ordering keeps it under the ship.
+                if (riderOriginPass && riderDescent != null)
+                {
+                    var riderChainOffset = 0f;
+                    var riderChainPass = riderDescent.OriginMap == mapUid ||
+                        riderOriginChain != null &&
+                        riderOriginChain.TryGetValue(mapUid, out riderChainOffset);
+
+                    if (riderChainPass)
+                    {
+                        var smooth = riderRide * riderRide * (3f - 2f * riderRide);
+                        var zoomLevels = riderDescentZoomLevels * smooth
+                            + riderVanishZoomLevels * MathF.Pow(riderRide, 4f);
+
+                        // An ascending rider's world falls AWAY instead of charging
+                        // in: the same curve with the exponent un-flipped, plus one
+                        // whole level of shrink baked in up front. The breach happens
+                        // a full gap above the top level, so the origin pass starts
+                        // exactly as small as the transit view it replaces and
+                        // recedes from there. Chain passes under the origin ride the
+                        // same clock one extra shrink step per level down, so the
+                        // whole ladder recedes together with no seam at the hop.
+                        zScale = riderDescent.Ascent
+                            ? MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink,
+                                1f + riderChainOffset + zoomLevels)
+                            : MathF.Pow(CESharedZLevelsSystem.ZLevelViewShrink, -zoomLevels);
+                    }
+                }
+
                 var zEye = new ZEye(lowestDepth, depth, highestDepth)
                 {
                     Position = new MapCoordinates(_fallbackEye.Position.Position, mapComp.MapId),
@@ -383,6 +541,9 @@ public sealed partial class ScalingViewport
                     DrawParallax = !isTransit && depth == lowestDepth && cloudDeck == null,
                     Offset = _fallbackEye.Offset + offset,
                     Rotation = _fallbackEye.Rotation,
+                    // A descending rider's origin pass magnifies through the zScale
+                    // override above — the one pass whose zoom is driven by fall
+                    // progress instead of pass depth.
                     Scale = _fallbackEye.Scale * zScale,
                 };
 
@@ -426,9 +587,9 @@ public sealed partial class ScalingViewport
 
                 // Ships that have sunk just below this deck render deeper than it, so the
                 // opaque fill above hid them the instant they crossed the plane — the pop.
-                // Re-project each as a cloud-colored ghost OVER the deck, fading out across
-                // CloudDissolveBand of descent, so they sink into the clouds and dissolve
-                // instead of vanishing on the spot.
+                // Re-render each eye OVER the deck through the transit shader, cloud veil
+                // rising and fade falling across CloudDissolveBand of descent, so they
+                // sink into the clouds and dissolve instead of vanishing on the spot.
                 foreach (var (sinkMap, sinkDepth, _, sinkTransit) in _zPasses)
                 {
                     if (!sinkTransit)
@@ -440,11 +601,16 @@ public sealed partial class ScalingViewport
 
                     if (MakeZEye(sinkMap, sinkDepth) is { } sinkEye)
                     {
-                        // Deeper below the deck = foggier (tint up) and dimmer (alpha down),
+                        // Deeper below the deck = foggier (cloud up) and dimmer (fade down),
                         // so the real hull shows near the plane and dissolves into the clouds
                         // as it sinks, rather than flat-filling to the deck color at once.
                         var t = below / CloudDissolveBand;
-                        BlitTransitCloudGhost(renderHandle, viewport, sinkEye, cloudDeck.CloudColor, tint: t, alpha: 1f - t);
+                        BlitTransitPass(renderHandle, viewport, sinkEye,
+                            hazeColor: Vector3.Zero,
+                            strength: 0f,
+                            cloudColor: new Vector3(cloudDeck.CloudColor.R, cloudDeck.CloudColor.G, cloudDeck.CloudColor.B),
+                            cloud: Math.Clamp(t, 0f, 1f),
+                            fade: 1f - t);
                     }
                 }
 
@@ -471,6 +637,154 @@ public sealed partial class ScalingViewport
                 DrawCloudWisps(renderHandle, viewport, wispColor.Value);
         }
 
+        // Airborne descent composite: every pseudo-map whose origin is the observer's
+        // map draws OVER the finished scene, never as a world pass — a pass deep
+        // enough to own the skybox would drag the parallax and planet overlays under
+        // its scaled eye, shrinking the sky along with the hull. Here only the ship's
+        // own pixels are touched: shrink from the scaled eye, haze toward the map's
+        // altitude-lerped MapLight, and — once Stage 1.5 hits — a fade by stage
+        // progress, so the ship has dissolved before the warp tick deletes the map
+        // (no last-frame pop, no dependence on server timing, no ghost bookkeeping:
+        // the pseudo-map is still live, so its own rendered eye is the source).
+        // Riders skip this: their own map IS the pseudo-map.
+        var descentBlitted = false;
+        var descentQuery = _entityManager.EntityQueryEnumerator<CEDescentMapComponent>();
+        while (descentQuery.MoveNext(out var descentUid, out var descentMap))
+        {
+            if (descentUid == playerMap || descentMap.OriginMap != playerMap)
+                continue;
+
+            // The entire bystander visual — plunge AND fadeout — keys off the one
+            // Descending clock. The fadeout is not a stage of its own: it starts
+            // midway through the drop and finishes with it, so there is no
+            // client-visible handoff when the server flips to Vanishing (that flip
+            // replicates late and used to stall the shrink for a beat while the
+            // client sat clamped at the end of Descending). By the time Vanishing
+            // actually starts the hull has already faded out, so the stage — and the
+            // server deleting the map at its end — changes nothing on screen.
+            const float fadeStartRide = 0.5f;
+            var ride = descentMap.Stage switch
+            {
+                CEDescentStage.Descending => _descent.GetStageProgress(
+                    CEDescentStage.Descending, descentMap.StageStart, descentMap.Ascent),
+                CEDescentStage.Vanishing or CEDescentStage.Arriving => 1f,
+                _ => 0f,
+            };
+            var fade = Math.Clamp((1f - ride) / (1f - fadeStartRide), 0f, 1f);
+            if (fade <= 0.001f)
+                continue;
+
+            // Same epsilon the old world pass used: strictly below the observer even
+            // at stage start. Same occlusion rule as transit ships, too: nothing
+            // draws under a deck the observer can't see through.
+            var descentDepth = -_descent.GetDescentDepth(descentMap) - 0.001f;
+
+            // Ascending hulls are ABOVE the observer, so the below-deck cull doesn't
+            // apply — the own-layer re-render already hides them behind walls and
+            // roofs. Everything else (shrink, haze, fade) reads the same for a hull
+            // receding upward as for one sinking away, so the pass is shared.
+            if (!descentMap.Ascent && occludeBelowDepth is { } occluded && descentDepth < occluded - occludeBand)
+                continue;
+
+            if (MakeZEye(descentUid, descentDepth) is { } descentEye)
+            {
+                // One z-level of shrink (ZLevelViewShrink) is nowhere near enough for
+                // a ship dropping onto a planet, but zooming the EYE out to speck
+                // scale makes the scratch render's view AABB grow like 1/scale² —
+                // the renderer ends up walking a planet-sized area per frame by the
+                // end of the drop. Instead the scratch render keeps the cheap
+                // one-level perspective and the remaining plunge shrinks the blit's
+                // destination rect, which is the same screen-space transform at
+                // constant render cost. The same ride that drives the fade drives
+                // the shrink, squared to backload it (exponential scale
+                // interpolation front-loads the apparent size change, so a linear
+                // exponent reads as an instant drop-off). Both run off the single
+                // Descending clock, so the hull
+                // is still visibly shrinking on its last visible frame — it drops
+                // out of sight rather than parking and dissolving.
+                var speckShrink = MathF.Pow(
+                    CESharedDescentSystem.SpeckScale / CESharedZLevelsSystem.ZLevelViewShrink,
+                    ride * ride);
+
+                BlitTransitPass(renderHandle, viewport, descentEye,
+                    hazeColor: MapHaze(descentUid),
+                    // Depth is negative below the observer; -1 by the vanish.
+                    strength: Math.Clamp(-descentDepth, 0f, 1f),
+                    cloudColor: Vector3.One,
+                    cloud: 0f,
+                    fade: fade,
+                    shrink: speckShrink);
+                descentBlitted = true;
+            }
+        }
+
+        // Those hulls landed on top of the observer's grid wherever they overlapped.
+        // Re-render the player's own layer over them: transparent clear, unscaled
+        // eye, DrawParallax off (which also gates the planet overlay), so ONLY grids
+        // and entities come back — walls occlude the sky again and the backdrop stays
+        // untouched. This is one scratch render of one map through the same blit
+        // helper; it does NOT re-enter the pass builder, so it cannot recurse.
+        if (descentBlitted && _fallbackEye != null)
+        {
+            var gridEye = new ZEye(lowestDepth, ownDepth, highestDepth)
+            {
+                Position = _fallbackEye.Position,
+                DrawFov = _fallbackEye.DrawFov,
+                DrawLight = _fallbackEye.DrawLight,
+                DrawParallax = false,
+                Offset = _fallbackEye.Offset,
+                Rotation = _fallbackEye.Rotation,
+                Scale = _fallbackEye.Scale,
+            };
+            BlitTransitPass(renderHandle, viewport, gridEye,
+                hazeColor: Vector3.Zero,
+                strength: 0f,
+                cloudColor: Vector3.One,
+                cloud: 0f,
+                fade: 1f);
+        }
+
+        // Rider's half of the departure, same single-clock principle as the bystander
+        // composite above: the whiteout starts midway through the Descending ride and
+        // is FULL by its end, so the late-replicating flip to Vanishing — and the
+        // warp's map move behind it — changes nothing on screen. riderRide holds at 1
+        // through Vanishing/Arriving, so later stages just keep the cover up; the
+        // planet-side arrival owns the fade back down.
+        var riderCover = 0f;
+        if (riderDescent != null)
+        {
+            var c = Math.Clamp(
+                (riderRide - riderCoverStartRide) / (1f - riderCoverStartRide), 0f, 1f);
+            // Smoothstepped: a linear ramp switching on mid-ride has a visible onset
+            // crease — the exact pop this rework exists to kill.
+            riderCover = c * c * (3f - 2f * c);
+        }
+        // After the warp the rider sits on the real planet map — no pseudo-map
+        // component anymore. The descent state now lives on the grid itself:
+        // Vanishing pins the cover full (covers any replication gap between the map
+        // hop and the stage flip, in either order), and Arriving fades it back down
+        // over the stage. Smoothstepped to match the fade-up, so the whole
+        // departure→arrival cover is one continuous white curve with no corner at
+        // the teleport.
+        else if (playerXform.GridUid is { } riderGrid &&
+                 _entityManager.TryGetComponent(riderGrid, out CEDescentComponent? gridDescent))
+        {
+            switch (gridDescent.Stage)
+            {
+                case CEDescentStage.Vanishing:
+                    riderCover = 1f;
+                    break;
+                case CEDescentStage.Arriving:
+                    var a = 1f - _descent.GetStageProgress(
+                        CEDescentStage.Arriving, gridDescent.StageStart);
+                    riderCover = a * a * (3f - 2f * a);
+                    break;
+            }
+        }
+
+        if (riderCover > 0.001f)
+            DrawCloudDeck(renderHandle, viewport, Color.White, riderCover);
+
         // Climbing toward a cloud layer overhead: the deck swallows the rider's own
         // view, whiting out completely ~CloudFullCoverDepth below the layer, then
         // breaking through into clear air on top. Descents run the same curve in
@@ -494,35 +808,7 @@ public sealed partial class ScalingViewport
         ZEye zEye,
         float depth)
     {
-        if (_transitViewport == null || _transitViewport.Size != viewport.Size)
-        {
-            _transitViewport?.Dispose();
-            _transitViewport = _clyde.CreateViewport(viewport.Size, nameof(_transitViewport));
-            _transitViewport.RenderScale = viewport.RenderScale;
-        }
-
-        _transitBlitShader ??= _prototypeManager.Index<ShaderPrototype>("CEZBlurBlit").InstanceUnique();
-
         zEye.DrawParallax = false;
-
-        _transitViewport.Eye = zEye;
-        // NOT Color.Transparent: that's WHITE with zero alpha, and any blend or blur
-        // leakage turns it into a white wash. Transparent black misbehaves invisibly.
-        _transitViewport.ClearColor = new Color(0f, 0f, 0f, 0f);
-        _transitViewport.Render();
-
-        // The transit map's own MapLight is already altitude-lerped, making it the
-        // correct haze tint for the ship at its current height.
-        var hazeColor = new Vector3(0, 0, 1);
-        if (_entityManager.TryGetComponent(transitMap, out MapLightComponent? mapLight))
-        {
-            hazeColor = new Vector3(
-                mapLight.AmbientLightColor.R,
-                mapLight.AmbientLightColor.G,
-                mapLight.AmbientLightColor.B);
-        }
-
-        var strength = Math.Clamp(depth, 0f, 1f);
 
         // Veil the ship's own pixels with a cloud deck's color as it nears the layer,
         // whichever side the cloud is on. A cloud ABOVE the gap (UpperMap) fogs the ship
@@ -556,36 +842,54 @@ public sealed partial class ScalingViewport
             }
         }
 
-        var screenHandle = renderHandle.DrawingHandleScreen;
-        screenHandle.RenderInRenderTarget(viewport.RenderTarget, () =>
-        {
-            var texture = _transitViewport.RenderTarget.Texture;
-
-            _transitBlitShader.SetParameter("BLUR_COLOR", hazeColor);
-            _transitBlitShader.SetParameter("STRENGTH", strength);
-            _transitBlitShader.SetParameter("CLOUD_COLOR", cloudColor);
-            _transitBlitShader.SetParameter("CLOUD", cloud);
+        BlitTransitPass(renderHandle, viewport, zEye,
+            hazeColor: MapHaze(transitMap),
+            strength: Math.Clamp(depth, 0f, 1f),
+            cloudColor: cloudColor,
+            cloud: cloud,
             // Ships dissolve into the sky as they climb away from the observer and
             // materialize out of it on the way down.
-            _transitBlitShader.SetParameter("FADE", TransitFade(depth));
-
-            screenHandle.UseShader(_transitBlitShader);
-            screenHandle.DrawTextureRect(texture, new UIBox2(Vector2.Zero, texture.Size));
-            screenHandle.UseShader(null);
-        }, null);
+            fade: TransitFade(depth));
     }
 
     /// <summary>
-    /// Renders a transit map to the scratch viewport under <paramref name="eye"/> and blits
-    /// just its hull over the main target: its own colors tinted toward
-    /// <paramref name="cloudColor"/> by <paramref name="tint"/> (0 = untouched hull, 1 = flat
-    /// deck color) and drawn at <paramref name="alpha"/>. Used to re-draw a ship that has sunk
-    /// below a cloud deck — and been hidden by its opaque fill — as a fogging, fading hull
-    /// sinking into the clouds instead of vanishing on the spot.
+    /// The haze tint for a map at altitude: its own MapLight ambient, which the server
+    /// already lerps with height. Transit maps and descent pseudo-maps both keep theirs
+    /// current, so one lookup serves every airborne pass.
     /// </summary>
-    private void BlitTransitCloudGhost(IRenderHandle renderHandle, IClydeViewport viewport, IEye? eye, Color cloudColor, float tint, float alpha)
+    private Vector3 MapHaze(EntityUid map)
     {
-        if (eye is null || alpha <= 0.001f)
+        if (_entityManager.TryGetComponent(map, out MapLightComponent? mapLight))
+        {
+            return new Vector3(
+                mapLight.AmbientLightColor.R,
+                mapLight.AmbientLightColor.G,
+                mapLight.AmbientLightColor.B);
+        }
+
+        return new Vector3(0, 0, 1);
+    }
+
+    /// <summary>
+    /// Renders a map to the scratch viewport under <paramref name="eye"/> and composites
+    /// just its hull over the main target through the transit shader: hazed toward
+    /// <paramref name="hazeColor"/> by <paramref name="strength"/>, veiled toward
+    /// <paramref name="cloudColor"/> by <paramref name="cloud"/>, drawn at
+    /// <paramref name="fade"/>. The single path for every airborne composite — ships
+    /// overhead, hulls sinking below a cloud deck, vanishing descent pseudo-maps — so
+    /// their gamma/tint treatment can't drift apart.
+    /// </summary>
+    private void BlitTransitPass(IRenderHandle renderHandle,
+        IClydeViewport viewport,
+        IEye eye,
+        Vector3 hazeColor,
+        float strength,
+        Vector3 cloudColor,
+        float cloud,
+        float fade,
+        float shrink = 1f)
+    {
+        if (fade <= 0.001f)
             return;
 
         if (_transitViewport == null || _transitViewport.Size != viewport.Size)
@@ -598,23 +902,34 @@ public sealed partial class ScalingViewport
         _transitBlitShader ??= _prototypeManager.Index<ShaderPrototype>("CEZBlurBlit").InstanceUnique();
 
         _transitViewport.Eye = eye;
+        // NOT Color.Transparent: that's WHITE with zero alpha, and any blend or blur
+        // leakage turns it into a white wash. Transparent black misbehaves invisibly.
         _transitViewport.ClearColor = new Color(0f, 0f, 0f, 0f);
         _transitViewport.Render();
 
-        var col = new Vector3(cloudColor.R, cloudColor.G, cloudColor.B);
         var screenHandle = renderHandle.DrawingHandleScreen;
         screenHandle.RenderInRenderTarget(viewport.RenderTarget, () =>
         {
             var texture = _transitViewport.RenderTarget.Texture;
 
-            _transitBlitShader.SetParameter("BLUR_COLOR", new Vector3(0f, 0f, 0f));
-            _transitBlitShader.SetParameter("STRENGTH", 0f);
-            _transitBlitShader.SetParameter("CLOUD_COLOR", col);
-            _transitBlitShader.SetParameter("CLOUD", Math.Clamp(tint, 0f, 1f));
-            _transitBlitShader.SetParameter("FADE", Math.Clamp(alpha, 0f, 1f));
+            _transitBlitShader.SetParameter("BLUR_COLOR", hazeColor);
+            _transitBlitShader.SetParameter("STRENGTH", Math.Clamp(strength, 0f, 1f));
+            _transitBlitShader.SetParameter("CLOUD_COLOR", cloudColor);
+            _transitBlitShader.SetParameter("CLOUD", Math.Clamp(cloud, 0f, 1f));
+            _transitBlitShader.SetParameter("FADE", Math.Clamp(fade, 0f, 1f));
 
             screenHandle.UseShader(_transitBlitShader);
-            screenHandle.DrawTextureRect(texture, new UIBox2(Vector2.Zero, texture.Size));
+            // Scaling the destination rect about the viewport centre is exactly a
+            // further eye zoom-out (both multiply screen-space displacements from
+            // centre), but the world-space render stays one z-level wide — this is
+            // how a descending ship reaches speck scale without the scratch pass
+            // rendering a continent.
+            var size = (Vector2)texture.Size;
+            var half = size / 2f;
+            var rect = shrink < 1f
+                ? new UIBox2(half - half * shrink, half + half * shrink)
+                : new UIBox2(Vector2.Zero, size);
+            screenHandle.DrawTextureRect(texture, rect);
             screenHandle.UseShader(null);
         }, null);
     }

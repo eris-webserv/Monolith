@@ -90,30 +90,26 @@ public partial class BaseShuttleControl : MapGridControl
 
     protected void DrawCircles(DrawingHandleScreen handle)
     {
-        // Equatorial lines
+        // Equatorial lines (CE: circle size scales iwth zoom)
         var gridLines = Color.LightGray.WithAlpha(0.01f);
-
-        // Each circle is this x distance of the last one.
-        const float EquatorialMultiplier = 2f;
-
-        var minDistance = MathF.Pow(EquatorialMultiplier, EquatorialMultiplier * 1.5f);
-        var maxDistance = MathF.Pow(2f, EquatorialMultiplier * 6f);
-        var cornerDistance = MathF.Sqrt(WorldRange * WorldRange + WorldRange * WorldRange);
+        var color = Color.ToSrgb(gridLines).WithAlpha(0.05f);
 
         var origin = MidPointVector; // Mono
 
-        for (var radius = minDistance; radius <= maxDistance; radius *= EquatorialMultiplier)
-        {
-            if (radius > cornerDistance)
-                continue;
+        const int ringCount = 4;
 
-            var color = Color.ToSrgb(gridLines).WithAlpha(0.05f);
-            var scaledRadius = MinimapScale * radius;
-            var text = $"{radius:0}m";
+        for (var i = 1; i <= ringCount; i++)
+        {
+            var fraction = (float)i / ringCount;
+            var scaledRadius = ScaledMinimapRadius * fraction;
+            var distance = WorldRange * fraction;
+            var text = distance < 10f ? $"{distance:0.0}m" : $"{distance:0}m";
             var textDimensions = handle.GetDimensions(Font, text, UIScale);
 
-            handle.DrawCircle(origin, scaledRadius, color, false);
-            handle.DrawString(Font, ScalePosition(new Vector2(0f, -radius)) - new Vector2(0f, textDimensions.Y), text, UIScale, color);
+            if (i < ringCount)
+                handle.DrawCircle(origin, scaledRadius, color, false);
+
+            handle.DrawString(Font, origin + new Vector2(0f, -scaledRadius - textDimensions.Y), text, UIScale, color);
         }
 
         const int gridLinesRadial = 8;

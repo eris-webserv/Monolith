@@ -28,6 +28,9 @@ public sealed partial class ShuttleConsoleWindow : FancyWindow,
     public event Action<List<NetEntity>>? UndockAllRequest;
     public event Action<List<NetEntity>, bool>? ToggleFTLLockRequest;
 
+    // CE
+    public event Action<NetEntity>? DescendRequest;
+
     public ShuttleConsoleWindow()
     {
         RobustXamlLoader.Load(this);
@@ -82,6 +85,12 @@ public sealed partial class ShuttleConsoleWindow : FancyWindow,
         DockContainer.ToggleFTLLockRequest += (dockEntities, enabled) =>
         {
             ToggleFTLLockRequest?.Invoke(dockEntities, enabled);
+        };
+
+        // CE
+        NavContainer.OnDescendRequest += planet =>
+        {
+            DescendRequest?.Invoke(planet);
         };
 
         NfInitialize(); // Frontier Initialization for the ShuttleConsoleWindow

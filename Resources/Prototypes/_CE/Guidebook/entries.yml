@@ -1,0 +1,30 @@
+- type: guideEntry
+  id: CEZGuidebook
+  name: Z-Networks
+  text: "/ServerInfo/_Mono/Guidebook/_PZN/updates.xml"
+  priority: 5
+  children:
+  - CEZAltitudeGuide
+  - CEZPlanetsGuide
+  - CEZShieldsGuide
+  - CEZGravgenGuide
+
+- type: guideEntry
+  id: CEZAltitudeGuide
+  name: Altitude
+  text: "/ServerInfo/_Mono/Guidebook/_PZN/altitude.xml"
+
+- type: guideEntry
+  id: CEZPlanetsGuide
+  name: Planets
+  text: "/ServerInfo/_Mono/Guidebook/_PZN/planets.xml"
+
+- type: guideEntry
+  id: CEZShieldsGuide
+  name: Shield Generators
+  text: "/ServerInfo/_Mono/Guidebook/_PZN/shields.xml"
+
+- type: guideEntry
+  id: CEZGravgenGuide
+  name: Gravity Generators
+  text: "/ServerInfo/_Mono/Guidebook/_PZN/gravgen.xml"

@@ -4,9 +4,9 @@
   suffix: DEBUG
   components:
   - type: PowerSupplier
-    supplyRate: 300000
-    supplyRampRate: 50000
-    supplyRampTolerance: 500
+    supplyRate: 1E25
+    supplyRampRate: 1E25
+    supplyRampTolerance: 1E25
   - type: Tag
     tags:
       - Debug

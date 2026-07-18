@@ -522,6 +522,61 @@ public sealed partial class CEZLevelsSystem
     }
 
     /// <summary>
+    /// How far an arriving set should coast down from its open-sky entry point at the
+    /// top of the gap (progress 1) before stopping: just inside the settle zone over
+    /// the level below, so the approach profile takes over and lands it.
+    /// </summary>
+    private const float ArrivalCoastDistance = 0.85f;
+
+    /// <summary>
+    /// Inserts a docked set into transit directly above <paramref name="topLevel"/> — the
+    /// entry point for arrivals from OUTSIDE the z machinery (planet descent from orbit).
+    /// The set appears at the very top of the gap over the network's top level with open
+    /// sky above it (UpperMap = null), and descends through the normal transit flow from
+    /// there. World positions are taken as-is: callers re-anchor the set into the target
+    /// stack's coordinate space before calling.
+    /// </summary>
+    public bool InsertSetIntoTransitAbove(EntityUid primaryGrid, HashSet<EntityUid> grids, EntityUid topLevel)
+    {
+        if (!TryComp<CEZMapComponent>(topLevel, out var topZ))
+            return false;
+
+        var transitMap = CreateTransitMap(topLevel, null, primaryGrid);
+        var transit = Comp<CEZTransitMapComponent>(transitMap);
+        transit.ConvoyLead = true;
+        Dirty(transitMap, transit);
+
+        // offset -1 / anchor depth mirror TryEnterTransit's descending plan, so
+        // passenger z caches update to the gap over the anchor level.
+        MoveGridSetToMap(grids, transitMap, -1, topZ.Depth);
+
+        // With open sky above there's no upper plane to settle against, so a gravgen'd
+        // set's hover easing (target 0) would park it at the seam forever. Seed enough
+        // fall speed to coast into the settle zone over the level below, where the
+        // normal approach profile brakes the drop and lands it. Sized against the
+        // set's own damping so heavy and overbuilt ships stop in the same place.
+        var damp = MathF.Max(GetVerticalThrustAccel(primaryGrid), HoverDampAccel);
+        var dropSpeed = MathF.Sqrt(2f * damp * ArrivalCoastDistance);
+
+        foreach (var gridUid in grids)
+        {
+            var zPhys = EnsureComp<CEZPhysicsComponent>(gridUid);
+            SetZPosition((gridUid, zPhys), 1f);
+
+            var faller = EnsureComp<CEZGridFallerComponent>(gridUid);
+            faller.Velocity = MathF.Min(dropSpeed, faller.GridTerminalVelocity);
+
+            // Everyone gets to watch, not just PVS neighbours.
+            _pvsOverride.AddGlobalOverride(gridUid);
+
+            // In transit = airborne: engines are live regardless of direction.
+            _shuttle.Enable(gridUid);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Sets a transiting grid set's altitude in the z-network's depth coordinates:
     /// the integer part is a level, the fraction is the position in the gap above it
     /// (1.1 = a tenth of a gap above level 1). Absolute and idempotent — repeating the
@@ -556,6 +611,17 @@ public sealed partial class CEZLevelsSystem
 
             if (topTransit.UpperMap is not { } topUpper)
             {
+                // Open sky with nothing above: the climb clamps here — but sustained
+                // pushing against this ceiling is how a ship breaches orbit off a
+                // planet. Announce the push (this runs every tick the pilot holds it);
+                // the descent system owns the breach spool and the ascent theatre, and
+                // does nothing if this network isn't a planet's.
+                if (topTransit.LowerMap is { } openSkyTop)
+                {
+                    var climb = new CEZOpenSkyClimbEvent(grid.Owner, openSkyTop, convoy.Count);
+                    RaiseLocalEvent(grid.Owner, ref climb);
+                }
+
                 progress = 1f;
                 break;
             }
@@ -577,6 +643,17 @@ public sealed partial class CEZLevelsSystem
 
                 if (!TryMapUp(topUpper, out _))
                 {
+                    // Still the top: the ship is capped at the highest level's plane.
+                    // Sustained pushing against this ceiling is how a ship breaches
+                    // orbit off a planet — same announcement as the open-sky clamp
+                    // above, just from the gap under the top level instead of the gap
+                    // over it (liftoffs from the top level live here, since
+                    // TryEnterTransit never creates a gap with nothing above it). The
+                    // descent system owns the breach spool and does nothing if this
+                    // network isn't a planet's.
+                    var climb = new CEZOpenSkyClimbEvent(grid.Owner, topUpper, convoy.Count);
+                    RaiseLocalEvent(grid.Owner, ref climb);
+
                     progress = 1f;
                     break;
                 }
@@ -850,7 +927,7 @@ public sealed partial class CEZLevelsSystem
         return true;
     }
 
-    private EntityUid CreateTransitMap(EntityUid lowerMap, EntityUid upperMap, EntityUid primaryGrid)
+    private EntityUid CreateTransitMap(EntityUid lowerMap, EntityUid? upperMap, EntityUid primaryGrid)
     {
         var mapUid = _map.CreateMap(out _);
 
@@ -866,9 +943,10 @@ public sealed partial class CEZLevelsSystem
             EntityManager.AddComponents(mapUid, network.Comp.Components, removeExisting: false);
 
         // Start lit like the upper level; the client lerps this toward the lower
-        // level's ambient as the grid descends.
+        // level's ambient as the grid descends. A null upper (descent from open
+        // space — nothing above the gap) falls through to the lower level's light.
         var light = EnsureComp<MapLightComponent>(mapUid);
-        if (TryComp<MapLightComponent>(upperMap, out var upperLight))
+        if (upperMap is { } upper && TryComp<MapLightComponent>(upper, out var upperLight))
             light.AmbientLightColor = upperLight.AmbientLightColor;
         else if (TryComp<MapLightComponent>(lowerMap, out var lowerLight))
             light.AmbientLightColor = lowerLight.AmbientLightColor;
@@ -894,3 +972,18 @@ public record struct CEZNetworkExpandRequestEvent(
     Entity<CEZMapNetworkComponent> Network,
     EntityUid EdgeMap,
     bool Up);
+
+/// <summary>
+/// Raised on a convoy's lead grid every tick it climbs against the open-sky top of a
+/// z-network (top gap, no level above, expansion already declined). The transit
+/// integrator keeps the grid clamped at the top regardless — listeners decide whether
+/// sustained pushing means anything (planet ascent does: it breaches orbit).
+/// </summary>
+/// <param name="Grid">The convoy's lead grid, still on its transit map.</param>
+/// <param name="TopLevel">The z-level map directly below the open sky.</param>
+/// <param name="ConvoyLayers">How many transit layers the convoy spans.</param>
+[ByRefEvent]
+public record struct CEZOpenSkyClimbEvent(
+    EntityUid Grid,
+    EntityUid TopLevel,
+    int ConvoyLayers);

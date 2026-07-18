@@ -2,3 +2,5 @@
   id: CEZLevelEye
   save: false
   categories: [ HideSpawnMenu ]
+  components:
+  - type: Eye

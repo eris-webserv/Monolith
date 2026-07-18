@@ -68,11 +68,25 @@ public sealed partial class CEZLevelsSystem
             levelMapComponent.Depth = depth;
             levelMapComponent.NetworkUid = network;
 
-            if (network.Comp.ZLevels.TryGetValue(depth + 1, out var aboveMapUid))
-                levelMapComponent.MapAbove = aboveMapUid;
+            // Link both directions: the new map points at its neighbours, AND the
+            // neighbours point back at it. Without the back-pointers, a stack added
+            // bottom-up leaves every MapAbove null (and top-down every MapBelow),
+            // because the earlier map was linked before this one existed.
+            if (network.Comp.ZLevels.TryGetValue(depth + 1, out var aboveMapUid) && aboveMapUid is { } above)
+            {
+                levelMapComponent.MapAbove = above;
+                var aboveComp = EnsureComp<CEZMapComponent>(above);
+                aboveComp.MapBelow = mapUid;
+                Dirty(above, aboveComp);
+            }
 
-            if (network.Comp.ZLevels.TryGetValue(depth - 1, out var belowMapUid))
-                levelMapComponent.MapBelow = belowMapUid;
+            if (network.Comp.ZLevels.TryGetValue(depth - 1, out var belowMapUid) && belowMapUid is { } below)
+            {
+                levelMapComponent.MapBelow = below;
+                var belowComp = EnsureComp<CEZMapComponent>(below);
+                belowComp.MapAbove = mapUid;
+                Dirty(below, belowComp);
+            }
 
             Dirty(mapUid, levelMapComponent);
 

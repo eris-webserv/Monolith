@@ -1,3 +1,5 @@
+using Content.Shared._CE.ZLevels.Core.Components;
+using Content.Shared._CE.ZLevels.Core.EntitySystems;
 using Content.Shared._Mono.CCVar;
 using Robust.Shared.Configuration;
 using Robust.Shared.Map.Components;
@@ -12,6 +14,8 @@ namespace Content.Shared._Mono.Detection;
 public sealed partial class DetectionSystem : EntitySystem
 {
     [Dependency] private IConfigurationManager _cfg = default!;
+    [Dependency] private SharedTransformSystem _transform = default!;
+    [Dependency] private CESharedZLevelsSystem _zLevels = default!;
 
     private float _thermalMul;
     private float _visualMul;
@@ -60,7 +64,7 @@ public sealed partial class DetectionSystem : EntitySystem
 
         var xform = Transform(grid);
         var byXform = Transform(byUid);
-        if (xform.Coordinates.TryDistance(EntityManager, byXform.Coordinates, out var distance))
+        if (TryGetDetectionDistance(xform, byXform, out var distance))
         {
             if (distance <= outlineRadius) // accounts for visual radius
                 level = DetectionLevel.Detected;
@@ -70,6 +74,53 @@ public sealed partial class DetectionSystem : EntitySystem
 
         // maybe make this also take IFF being on into account?
         return level;
+    }
+
+    /// <summary>
+    /// CE: Distance between two entities for detection purposes. Same-map distance is the usual
+    /// planar distance. If the entities sit on different maps that belong to the same z-network
+    /// (including transit-gap maps mid-ride), z-maps share world coordinates, so we can still
+    /// measure the planar separation instead of silently failing — otherwise sensors would
+    /// hard-drop a contact the instant it crossed onto an adjacent level.
+    /// </summary>
+    private bool TryGetDetectionDistance(TransformComponent xform, TransformComponent byXform, out float distance)
+    {
+        if (xform.Coordinates.TryDistance(EntityManager, byXform.Coordinates, out distance))
+            return true;
+
+        if (xform.MapUid is not { } mapA || byXform.MapUid is not { } mapB)
+            return false;
+
+        if (!TryGetZNetwork(mapA, out var netA) || !TryGetZNetwork(mapB, out var netB) || netA != netB)
+            return false;
+
+        distance = (_transform.GetWorldPosition(xform) - _transform.GetWorldPosition(byXform)).Length();
+        return true;
+    }
+
+    /// <summary>
+    /// CE: Resolves the z-network a map belongs to. Transit-gap maps aren't network members
+    /// themselves, so route those through their lower anchor.
+    /// </summary>
+    private bool TryGetZNetwork(EntityUid mapUid, out EntityUid network)
+    {
+        network = default;
+
+        if (_zLevels.TryGetMapNetwork(mapUid, out var net))
+        {
+            network = net.Owner;
+            return true;
+        }
+
+        if (TryComp<CEZTransitMapComponent>(mapUid, out var transit)
+            && transit.LowerMap is { } lower
+            && _zLevels.TryGetMapNetwork(lower, out net))
+        {
+            network = net.Owner;
+            return true;
+        }
+
+        return false;
     }
 
     public DetectionLevel IsGridDetected(Entity<MapGridComponent?> grid, IEnumerable<EntityUid> byUids)

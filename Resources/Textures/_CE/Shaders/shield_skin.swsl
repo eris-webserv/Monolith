@@ -1,0 +1,97 @@
+light_mode unshaded;
+
+// CrystallEdge: planetary shield skin — a procedural hexfield dome drawn over the
+// planet disc by CEPlanetOverlay. Entirely textureless: the quad's UV is treated
+// as a unit disc (r = 1 at the quad edge), bulged into fake sphere coordinates so
+// the hex cells foreshorten toward the limb, then composed from a per-cell
+// shimmering fill, bright hex border lines, and a limb rim glow.
+//
+// `progress` (0 → 1) sweeps the field across the dome from the top for the
+// activation crawl: each cell pops in as the front passes it, with per-cell
+// jitter so the front reads organic rather than a ruler line, and flashes hot
+// for a beat right behind the front.
+
+uniform highp float progress;
+uniform highp vec4 skin_color;
+
+// Pixels across the quad — the overlay passes the planet sprite's texel width so
+// the field renders on the exact same pixel grid as the surface art beneath it.
+uniform highp float pixel_grid;
+
+highp float hash21(highp vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+// Signed-ish distance to the hex cell border: 0 at the centre, 0.5 at an edge.
+highp float hexDist(highp vec2 p) {
+    p = abs(p);
+    return max(dot(p, vec2(0.5, 0.866025)), p.x);
+}
+
+// Hex tiling: returns (edge distance, cell id hash) for the cell containing uv.
+highp vec2 hexCell(highp vec2 uv) {
+    highp vec2 r = vec2(1.0, 1.732051);
+    highp vec2 h = r * 0.5;
+    highp vec2 a = mod(uv, r) - h;
+    highp vec2 b = mod(uv - h, r) - h;
+    highp float useB = step(dot(b, b), dot(a, a));
+    highp vec2 gv = mix(a, b, useB);
+    highp vec2 id = uv - gv;
+    return vec2(hexDist(gv), hash21(id));
+}
+
+void fragment() {
+    // Pixel-art quantisation: snap the sample point to the sprite's texel grid and
+    // step the clock at ~8 fps, so the field is chunky in space AND time — smooth
+    // per-frame motion on a pixel grid reads as cheap; steppy motion reads as sprite
+    // animation.
+    highp float grid = max(pixel_grid, 1.0);
+    highp vec2 uvq = (floor(UV * grid) + vec2(0.5)) / grid;
+    highp float t = floor(TIME * 8.0) / 8.0;
+
+    // Disc space: r = 1 at the quad's inscribed circle (the overlay sizes the quad
+    // to the planet sprite, so the field hugs the disc).
+    highp vec2 p = (uvq - vec2(0.5)) * 2.0;
+    highp float r = length(p);
+
+    // Hard disc mask with a little AA; everything below multiplies into this.
+    highp float mask = 1.0 - smoothstep(0.97, 1.0, r);
+
+    // Fake dome: z is the shell height (1 centre → 0 limb). The equal-angle bulge
+    // asin(r)/r runs the hex grid faster toward the limb, so cells visibly
+    // foreshorten there — reads as a curved shell, not wallpaper.
+    highp float rc = min(r, 1.0);
+    highp float z = sqrt(max(1.0 - rc * rc, 0.0));
+    highp float warp = asin(rc) / max(rc, 0.0001);
+    highp vec2 q = p * warp;
+
+    highp vec2 cell = hexCell(q * 9.0);
+    highp float edge = cell.x;
+    highp float id = cell.y;
+
+    // Formation crawl from the top of the disc.
+    highp float front = distance(p, vec2(0.0, -0.85)) * 0.5;
+    highp float jitter = (id - 0.5) * 0.12;
+    highp float appear = step(front + jitter, progress);
+    highp float fresh = smoothstep(0.25, 0.0, progress - (front + jitter));
+
+    // Per-cell shimmer so the field feels energised without strobing.
+    highp float shimmer = 0.75 + 0.25 * sin(t * 1.7 + id * 6.2832);
+
+    // Faint cell fill, brighter borders, hot pop-in, and a limb rim glow.
+    highp float border = smoothstep(0.42, 0.5, edge);
+    highp float fill = 0.08 * shimmer;
+    highp float lines = 0.5 * border;
+    highp float rim = pow(1.0 - z, 3.0) * 0.75;
+
+    highp float a = (fill + lines + fresh * 0.6 + rim) * appear * mask;
+
+    // Slow breath over the whole shell — alive, never flickering off.
+    a *= 0.92 + 0.08 * sin(t * 0.9);
+
+    // Posterise into a handful of alpha bands: no smooth gradients, just the
+    // stepped shading pixel art actually has.
+    a = floor(clamp(a, 0.0, 1.0) * 6.0 + 0.5) / 6.0;
+
+    COLOR = vec4(skin_color.rgb, skin_color.a * a);
+}

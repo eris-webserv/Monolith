@@ -87,15 +87,18 @@ public sealed partial class ShipShieldsSystem : EntitySystem
                 {
                     emitter.Shield = shield;
                     emitter.Shielded = parent.Value;
+                    emitter.CrashRespooling = false;
                 }
-                _audio.PlayGlobal(emitter.PowerUpSound, filter, true, emitter.PowerUpSound.Params);
+                // pzn: raised as an event and played client-side so the Ambience
+                // volume slider can scale it (see ShipShieldSoundEvent).
+                RaiseNetworkEvent(new ShipShieldSoundEvent(_audio.ResolveSound(emitter.PowerUpSound), emitter.PowerUpSound.Params), filter);
             }
             else if ((emitter.Recharging || emitter.OverloadAccumulator > 0) && emitter.Shield is not null)
             {
                 UnshieldEntity(parent.Value);
                 emitter.Shield = null;
                 emitter.Shielded = null;
-                _audio.PlayGlobal(emitter.PowerDownSound, filter, true, emitter.PowerUpSound.Params);
+                RaiseNetworkEvent(new ShipShieldSoundEvent(_audio.ResolveSound(emitter.PowerDownSound), emitter.PowerDownSound.Params), filter);
             }
 
         }

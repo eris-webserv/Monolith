@@ -8,6 +8,7 @@ using Robust.Shared.Map;
 
 // Mono
 using Content.Shared._Mono.Shuttles;
+using Content.Shared._CE.Planets.Descent; // CE
 
 namespace Content.Client.Shuttles.BUI;
 
@@ -33,6 +34,7 @@ public sealed partial class ShuttleConsoleBoundUserInterface : BoundUserInterfac
         _window.UndockRequest += OnUndockRequest;
         _window.UndockAllRequest += OnUndockAllRequest;
         _window.ToggleFTLLockRequest += OnToggleFTLLockRequest;
+        _window.DescendRequest += OnDescendRequest; // CE
         NfOpen(); // Frontier
     }
 
@@ -40,6 +42,14 @@ public sealed partial class ShuttleConsoleBoundUserInterface : BoundUserInterfac
     {
         Logger.DebugS("shuttle", $"ShuttleConsoleBUI: Sending FTL lock request with enabled={enabled}, entities={string.Join(", ", dockEntities)}");
         SendMessage(new ToggleFTLLockRequestMessage(dockEntities, enabled));
+    }
+
+    // CE
+    private void OnDescendRequest(NetEntity planet)
+    {
+        // Predicted: the shared handler starts the spinup client-side immediately,
+        // so the console doesn't wait a server round-trip to react.
+        SendPredictedMessage(new CEDescentRequestMessage(planet));
     }
 
     private void OnUndockAllRequest(List<NetEntity> dockEntities)
