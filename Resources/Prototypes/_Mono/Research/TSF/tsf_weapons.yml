@@ -7,9 +7,7 @@
   cost: 25000
   recipeUnlocks:
   - WeaponRifleLecterTSF
-  - WeaponRifleVulcanTSF
   - WeaponSubMachineGunDrozdTSF
-  - WeaponRifleMR3CTSF
   technologyPrerequisites:
   - UniversalMaterialResearchT1
   position: 12, 2
@@ -24,6 +22,8 @@
   recipeUnlocks:
   - WeaponRifleAnnieTSF
   - WeaponLMGGrizzlyTSF
+  - WeaponRifleRiversongTSF
+  - WeaponRifleDragonfangTSF
   - WeaponDEWCalico
   - Magazine700Thz
   - AmmoBox700Thz
@@ -44,12 +44,14 @@
   recipeUnlocks:
   - WeaponRifleXlr556Tsf
   - WeaponRifleMR8CTSF
+  - WeaponAMRShenzhenTSF
   - WeaponLauncherTSFAnubis
   - WeaponDEWSmilodon
   - WeaponLauncherTSFOsiris
   - Magazine35mmGrenade
   - LargePowerCell400Thz # For smilodon
   - LargePowerCell700Thz # For smilodon
+  - AmmoBoxShenzhenBig
   technologyPrerequisites:
   - TsfAdvancedWeapons
   - UniversalMaterialResearchT3

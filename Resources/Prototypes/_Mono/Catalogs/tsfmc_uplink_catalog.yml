@@ -42,6 +42,9 @@
     whitelist:
       tags:
       - SecurityUplink
+  - !type:BuyerJobCondition
+      whitelist:
+        - Sheriff
 
 - type: listing
   id: UplinkSecurityMR8C
@@ -257,7 +260,7 @@
   description: uplink-security-t1-spica-voucher-desc
   productEntity: ShipVoucherSpica
   cost:
-    FederationMilitaryCredit: 90
+    FederationMilitaryCredit: 55
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -272,7 +275,7 @@
   description: uplink-security-t1-dagger-voucher-desc
   productEntity: ShipVoucherDagger
   cost:
-    FederationMilitaryCredit: 100
+    FederationMilitaryCredit: 75
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -287,7 +290,7 @@
   description: uplink-security-t1-tarantula-voucher-desc
   productEntity: ShipVoucherTarantula
   cost:
-    FederationMilitaryCredit: 110
+    FederationMilitaryCredit: 85
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -302,7 +305,7 @@
   description: uplink-security-t1-sentinel-voucher-desc
   productEntity: ShipVoucherSentinel
   cost:
-    FederationMilitaryCredit: 110
+    FederationMilitaryCredit: 85
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -317,7 +320,7 @@
   description: uplink-security-t1-mercury-voucher-desc
   productEntity: ShipVoucherMercury
   cost:
-    FederationMilitaryCredit: 100 # Needs 2 man crew for GCS so its discounted
+    FederationMilitaryCredit: 65 # Needs 2 man crew for GCS so its discounted
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -332,7 +335,7 @@
   description: uplink-security-t1-aldebaran-voucher-desc
   productEntity: ShipVoucherAldebaran
   cost:
-    FederationMilitaryCredit: 90
+    FederationMilitaryCredit: 80
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -351,7 +354,22 @@
   description: uplink-security-t2-andromeda-voucher-desc
   productEntity: ShipVoucherAndromeda
   cost:
-    FederationMilitaryCredit: 180
+    FederationMilitaryCredit: 165
+  categories:
+  - UplinkSecurityVouchers
+  conditions:
+  - !type:StoreWhitelistCondition
+    whitelist:
+      tags:
+      - FactionStaticUplinkTsf
+
+- type: listing
+  id: UplinkSecurityT2VoucherSpekter
+  name:  uplink-security-t2-spekter-voucher-name
+  description: uplink-security-t2-spekter-voucher-desc
+  productEntity: ShipVoucherSpekter
+  cost:
+    FederationMilitaryCredit: 240
   categories:
   - UplinkSecurityVouchers
   conditions:
@@ -369,6 +387,36 @@
   name:  uplink-security-t3-altair-voucher-name
   description: uplink-security-t3-altair-voucher-desc
   productEntity: ShipVoucherAltair
+  cost:
+    FederationMilitaryCredit: 345
+  categories:
+  - UplinkSecurityVouchers
+  conditions:
+  - !type:StoreWhitelistCondition
+    whitelist:
+      tags:
+      - FactionStaticUplinkTsf
+
+- type: listing
+  id: UplinkSecurityT3VoucherFujian
+  name:  uplink-security-t3-fujian-voucher-name
+  description: uplink-security-t3-fujian-voucher-desc
+  productEntity: ShipVoucherFujian
+  cost:
+    FederationMilitaryCredit: 320
+  categories:
+  - UplinkSecurityVouchers
+  conditions:
+  - !type:StoreWhitelistCondition
+    whitelist:
+      tags:
+      - FactionStaticUplinkTsf
+
+- type: listing
+  id: UplinkSecurityT3VoucherPolaris
+  name:  uplink-security-t3-polaris-voucher-name
+  description: uplink-security-t3-polaris-voucher-desc
+  productEntity: ShipVoucherPolaris
   cost:
     FederationMilitaryCredit: 400
   categories:
