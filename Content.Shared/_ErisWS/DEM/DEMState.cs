@@ -3,6 +3,7 @@ using Robust.Shared.Serialization;
 namespace Content.Shared._ErisWS.DEM;
 
 [Serializable, NetSerializable]
+
 public enum DEMPhase
 {
     OFFLINE,
@@ -25,12 +26,12 @@ public sealed class DEMState
     public float ShieldIntegrity = 100.0f; // below 0 = OH NO
 
     public long CoreElectronFlux = 0;
-    public long CoreMass = 0; // ADD THIS BEFORE TESTING DIPSHIT.
+    public long CoreMass = 10000;
     public float CoreSpin = 0.0f;
     public long CoreCharge = 0;
 
     public int LaserOffsetGoal = 0; // CLAMP: 0 - (manipulator rating * 4400) (Clamps occur to the LOWEST RATED LASER, in case you're about to ask)
-    public int LaserOffset = 0;
+    public int LaserOffset = 0; // millimeters
     public int LaserPowerGoal = 0; // CLAMP: 0 - (capacitor rating * 380)
     public int LaserPower = 0;
 }

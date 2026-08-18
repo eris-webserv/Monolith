@@ -1,0 +1,13 @@
+- type: entity
+  id: GridParallaxRelay
+  name: grid macrostate relay
+  categories: [HideSpawnMenu]
+  components:
+  - type: GridParallaxRelay
+  - type: Sprite
+    sprite: Structures/Machines/traitordm.rsi
+    visible: false
+    layers:
+    - state: redemption
+    - state: redemption-unshaded
+      shader: unshaded
