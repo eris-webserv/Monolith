@@ -1,0 +1,19 @@
+uniform highp float outline_width;
+
+void fragment() {
+    highp vec4 source = zTexture(UV);
+    highp vec2 pixel = TEXTURE_PIXEL_SIZE * outline_width;
+    highp float alpha = source.a;
+
+    alpha = max(alpha, texture2D(TEXTURE, UV + vec2(pixel.x, 0.0)).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV - vec2(pixel.x, 0.0)).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV + vec2(0.0, pixel.y)).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV - vec2(0.0, pixel.y)).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV + pixel).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV - pixel).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV + vec2(pixel.x, -pixel.y)).a);
+    alpha = max(alpha, texture2D(TEXTURE, UV + vec2(-pixel.x, pixel.y)).a);
+
+    COLOR = vec4(vec3(1.0), clamp(alpha - source.a, 0.0, 1.0));
+    lightSample = vec3(1.0);
+}

@@ -12,3 +12,10 @@
   id: DEMMeltdownStage2
   kind: source
   path: "/Textures/Shaders/_ErisWS/dem_meltdown_stage2.swsl"
+
+- type: shader
+  id: EternalDamnationOutline
+  kind: source
+  path: "/Textures/Shaders/_ErisWS/eternal_damnation.swsl"
+  params:
+    outline_width: 1.5

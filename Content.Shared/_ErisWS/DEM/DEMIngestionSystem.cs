@@ -65,13 +65,17 @@ public sealed class DEMIngestionSystem : EntitySystem
 
                 if (_net.IsServer && distance <= dem.ConsumptionRadius)
                 {
+                    var consumed = new DEMConsumeEntityEvent(target);
+                    RaiseLocalEvent(uid, ref consumed);
+                    if (!consumed.Handled)
+                        continue;
+
                     dem.State.CoreMass += Math.Max(1L, (long) MathF.Ceiling(body.Mass));
                     dem.State.AccretionDiskSaturation = Math.Clamp(
                         dem.State.AccretionDiskSaturation + Math.Max(0.25f, body.Mass * 0.01f),
                         0f,
                         100f);
                     stateChanged = true;
-                    QueueDel(target);
                     continue;
                 }
 

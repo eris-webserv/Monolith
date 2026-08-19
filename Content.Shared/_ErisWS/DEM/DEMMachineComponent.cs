@@ -30,6 +30,19 @@ public sealed partial class DEMAssemblyComponent : Component
     public EntityUid? Console;
 }
 
+[RegisterComponent, NetworkedComponent]
+public sealed partial class EternalDamnationMapComponent : Component;
+
+[RegisterComponent, NetworkedComponent, AutoGenerateComponentState]
+public sealed partial class EternalDamnationComponent : Component
+{
+    [DataField, AutoNetworkedField, ViewVariables(VVAccess.ReadWrite)]
+    public EntityUid Source;
+
+    [DataField, AutoNetworkedField, ViewVariables(VVAccess.ReadWrite)]
+    public EntityCoordinates ReturnCoordinates;
+}
+
 [Serializable, NetSerializable]
 public enum DEMMachinePart : byte
 {
@@ -57,6 +70,12 @@ public enum DEMMachinePart : byte
 
 [ByRefEvent]
 public record struct DEMScrubberBreachEvent(EntityUid Section);
+
+[ByRefEvent]
+public record struct DEMConsumeEntityEvent(EntityUid Target)
+{
+    public bool Handled;
+}
 
 [Serializable, NetSerializable]
 public sealed class DEMFormationPreviewEvent(DEMFormationPreviewPart[] parts) : EntityEventArgs

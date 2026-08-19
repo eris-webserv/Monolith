@@ -1,5 +1,6 @@
 using System.Numerics;
 using Content.Client.Parallax.Managers;
+using Content.Shared._ErisWS.DEM;
 using Content.Client.Viewport; // CrystallEdge
 using Content.Shared._CE.ZLevels.Core.Components; // CrystallEdge
 using Content.Shared._CE.ZLevels.Core.EntitySystems; // CrystallEdge
@@ -47,6 +48,9 @@ public sealed partial class ParallaxOverlay : Overlay
         // Transit maps are mostly-empty carriers for a moving ship; painting the
         // skybox on them would overwrite the already-rendered world below.
         if (_entManager.HasComponent<CEZTransitMapComponent>(args.MapUid))
+            return false;
+
+        if (_entManager.HasComponent<EternalDamnationMapComponent>(args.MapUid))
             return false;
 
         return !_zLevel.TryMapDown(args.MapUid, out _);
@@ -130,4 +134,3 @@ public sealed partial class ParallaxOverlay : Overlay
         worldHandle.UseShader(null);
     }
 }
-
