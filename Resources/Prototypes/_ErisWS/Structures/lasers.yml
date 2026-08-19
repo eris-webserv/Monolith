@@ -1,0 +1,19 @@
+- type: entity
+  id: StructureDEMPowerLaser
+  name: power laser
+  description: A combined energy-particle beam rated for 1.5 MW of power delivery. It seems to be disconnected from its MV mount, and you see no way of rewiring it. An unsettling writing on its back reads, DOCUMENTATION AVAILABLE AT _____.
+  parent: BaseStructure
+  components:
+  - type: DEMLaser
+  - type: Construction
+    graph: DEMLaser
+    node: completed
+    deconstructionTarget: null
+  - type: Sprite
+    sprite: _ErisWS/DEM/power_laser.rsi
+    drawdepth: FloorTiles
+    layers:
+    - map: ["base"] # todo force to be single-direction unrotateable uhhhh idfk how
+      state: base
+    - map: ["laser"]
+      state: laser

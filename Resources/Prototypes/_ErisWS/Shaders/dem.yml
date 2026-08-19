@@ -1,4 +1,9 @@
 - type: shader
+  id: DEMCore
+  kind: source
+  path: "/Textures/Shaders/_ErisWS/dem_core.swsl"
+
+- type: shader
   id: DEMMeltdownStage1
   kind: source
   path: "/Textures/Shaders/_ErisWS/dem_meltdown_stage1.swsl"

@@ -1,0 +1,21 @@
+- type: entity
+  id: StructureDEMConsole
+  parent: BaseComputer
+  name: dark energy manipulator control console
+  description: The primary control and monitoring terminal for a Dark Energy Manipulator.
+  components:
+  - type: DEMConsole
+  - type: DeviceLinkSource
+    range: 1000000
+    ports:
+    - DEMControl
+  - type: ActivatableUI
+    key: enum.DEMConsoleUiKey.Key
+  - type: UserInterface
+    interfaces:
+      enum.DEMConsoleUiKey.Key:
+        type: DEMConsoleBoundUserInterface
+      enum.WiresUiKey.Key:
+        type: WiresBoundUserInterface
+  - type: AccessReader
+    access: [["Engineering"]]

@@ -156,6 +156,18 @@ public sealed class MultipartMachineSystem : SharedMultipartMachineSystem
         return stateHasChanged;
     }
 
+    public bool ConfigureParts(
+        Entity<MultipartMachineComponent> ent,
+        Dictionary<Enum, MachinePart> parts,
+        EntityUid? user = null)
+    {
+        ClearAllParts(ent);
+        ent.Comp.Parts = parts;
+        Dirty(ent);
+        Rescan(ent, user);
+        return ent.Comp.IsAssembled;
+    }
+
     /// <summary>
     /// Clears all entities bound to parts for a specified machine.
     /// Will also raise the assembly state change and dirty event for it.

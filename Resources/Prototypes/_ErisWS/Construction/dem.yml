@@ -1,0 +1,13 @@
+- type: constructionGraph
+  id: DEMScrubber
+  start: completed
+  graph:
+  - node: completed
+    entity: StructureDEMScrubber
+
+- type: constructionGraph
+  id: DEMLaser
+  start: completed
+  graph:
+  - node: completed
+    entity: StructureDEMPowerLaser

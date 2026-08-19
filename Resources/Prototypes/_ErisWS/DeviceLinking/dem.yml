@@ -1,0 +1,10 @@
+- type: sourcePort
+  id: DEMControl
+  name: signal-port-name-dem-control
+  description: signal-port-description-dem-control
+  defaultLinks: [DEMMachine]
+
+- type: sinkPort
+  id: DEMMachine
+  name: signal-port-name-dem-machine
+  description: signal-port-description-dem-machine

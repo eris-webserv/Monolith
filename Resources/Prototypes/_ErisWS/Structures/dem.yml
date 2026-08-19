@@ -1,0 +1,68 @@
+- type: entity
+  id: DEMControl
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: DEM
+  - type: DEMMachine
+
+- type: entity
+  id: StructureDEMScrubber
+  name: horizon scrubber
+  description: A section of a Dark Energy Manipulator's horizon scrubber, protecting its complex from being cut by superheated plasma.
+  parent: BaseStructure
+  components:
+  - type: DEMScrubberPart
+  - type: DeviceLinkSink
+    ports:
+    - DEMMachine
+  - type: Construction
+    graph: DEMScrubber
+    node: completed
+    deconstructionTarget: null
+  - type: Fixtures
+    fixtures:
+      fix1:
+        shape:
+          !type:PhysShapeAabb
+          bounds: "-0.45,-0.45,0.45,0.45"
+        density: 60
+        mask:
+        - MachineMask
+        layer:
+        - LowImpassable
+  - type: Anchorable
+    flags:
+    - Anchorable
+  - type: Sprite
+    sprite: _ErisWS/DEM/horizon_scrubber.rsi
+    state: cardinal
+    drawdepth: FloorTiles
+
+- type: entity
+  id: StructureDEMScrubberFlipped
+  parent: StructureDEMScrubber
+  components:
+  - type: Sprite
+    sprite: _ErisWS/DEM/horizon_scrubber.rsi
+    state: cardinal
+    drawdepth: FloorTiles
+    scale: -1, 1
+
+- type: entity
+  id: StructureDEMScrubberDiagonal
+  parent: StructureDEMScrubber
+  components:
+  - type: Sprite
+    sprite: _ErisWS/DEM/horizon_scrubber.rsi
+    state: diagonal
+    drawdepth: FloorTiles
+
+- type: entity
+  id: StructureDEMScrubberDiagonalFlipped
+  parent: StructureDEMScrubber
+  components:
+  - type: Sprite
+    sprite: _ErisWS/DEM/horizon_scrubber.rsi
+    state: diagonal
+    drawdepth: FloorTiles
+    scale: -1, 1

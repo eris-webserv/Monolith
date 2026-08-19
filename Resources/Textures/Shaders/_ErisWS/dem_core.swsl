@@ -1,0 +1,50 @@
+uniform highp float diskTemperature;
+uniform highp float diskSpin;
+uniform highp float diskSaturation;
+
+const highp float renderRadius = 6.0;
+const highp float diskRadius = 4.55;
+
+highp float temperatureHeat(highp float celsius) {
+    highp float kelvin = celsius + 273.15;
+    return clamp((kelvin - 1000.0) / 11000.0, 0.0, 1.0);
+}
+
+highp vec3 plasmaColor(highp float temperature) {
+    highp float heat = temperatureHeat(temperature);
+    highp vec3 red = vec3(1.0, 0.08, 0.01);
+    highp vec3 gold = vec3(1.0, 0.62, 0.08);
+    highp vec3 white = vec3(1.0, 0.96, 0.82);
+    highp vec3 blue = vec3(0.62, 0.78, 1.0);
+
+    if (heat < 0.33)
+        return mix(red, gold, heat / 0.33);
+    if (heat < 0.72)
+        return mix(gold, white, (heat - 0.33) / 0.39);
+    return mix(white, blue, (heat - 0.72) / 0.28);
+}
+
+void fragment() {
+    highp vec2 point = (UV * 2.0 - 1.0) * renderRadius;
+    highp float worldRadius = length(point);
+    highp float radius = worldRadius / diskRadius;
+    highp float detailRadius = worldRadius / 5.0;
+    highp float angle = atan(point.y, point.x);
+    highp float rotation = TIME * diskSpin * 0.104719755;
+    highp float turbulence = sin((angle - rotation) * 9.0 + detailRadius * 21.0);
+    turbulence += sin((angle - rotation * 0.63) * 17.0 - detailRadius * 13.0) * 0.5;
+    turbulence = 0.68 + turbulence * 0.16;
+
+    highp float inner = smoothstep(0.27, 0.34, detailRadius);
+    highp float outer = 1.0 - smoothstep(0.9, 1.0, radius);
+    highp float disk = inner * outer;
+    highp float heat = temperatureHeat(diskTemperature);
+    highp vec3 color = plasmaColor(diskTemperature) * turbulence * mix(0.65, 1.8, heat);
+
+    highp float horizon = 1.0 - smoothstep(0.205, 0.22, detailRadius);
+    highp float opacity = disk * turbulence * clamp(diskSaturation / 100.0, 0.0, 1.0);
+    highp vec4 result = vec4(color, opacity);
+    result = mix(result, vec4(0.0, 0.0, 0.0, 1.0), horizon);
+
+    COLOR = result;
+}
