@@ -27,6 +27,7 @@ public sealed partial class ShuttleConsoleWindow : FancyWindow,
     public event Action<NetEntity>? UndockRequest;
     public event Action<List<NetEntity>>? UndockAllRequest;
     public event Action<List<NetEntity>, bool>? ToggleFTLLockRequest;
+    public event Action<NetEntity>? PlanetDescentRequest;
 
     public ShuttleConsoleWindow()
     {
@@ -62,6 +63,11 @@ public sealed partial class ShuttleConsoleWindow : FancyWindow,
         MapContainer.RequestAutopilot += (coords, angle) =>
         {
             RequestAutopilot?.Invoke(coords, angle);
+        };
+
+        NavContainer.PlanetDescentRequested += planet =>
+        {
+            PlanetDescentRequest?.Invoke(_entManager.GetNetEntity(planet));
         };
 
         DockContainer.DockRequest += (entity, netEntity) =>

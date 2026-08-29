@@ -8,6 +8,7 @@ using Robust.Shared.Map;
 
 // Mono
 using Content.Shared._Mono.Shuttles;
+using Content.Shared._FarHorizons.StarSystem;
 
 namespace Content.Client.Shuttles.BUI;
 
@@ -33,6 +34,7 @@ public sealed partial class ShuttleConsoleBoundUserInterface : BoundUserInterfac
         _window.UndockRequest += OnUndockRequest;
         _window.UndockAllRequest += OnUndockAllRequest;
         _window.ToggleFTLLockRequest += OnToggleFTLLockRequest;
+        _window.PlanetDescentRequest += OnPlanetDescentRequest;
         NfOpen(); // Frontier
     }
 
@@ -40,6 +42,11 @@ public sealed partial class ShuttleConsoleBoundUserInterface : BoundUserInterfac
     {
         Logger.DebugS("shuttle", $"ShuttleConsoleBUI: Sending FTL lock request with enabled={enabled}, entities={string.Join(", ", dockEntities)}");
         SendMessage(new ToggleFTLLockRequestMessage(dockEntities, enabled));
+    }
+
+    private void OnPlanetDescentRequest(NetEntity planet)
+    {
+        SendPredictedMessage(new PlanetDescentRequestMessage { Planet = planet });
     }
 
     private void OnUndockAllRequest(List<NetEntity> dockEntities)
