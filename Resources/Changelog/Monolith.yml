@@ -24475,3 +24475,18 @@ Entries:
   id: 2688
   time: '2026-09-03T22:06:32.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4527
+- author: Onezero0
+  changes:
+    - type: Add
+      message: >-
+        Re-added special guns for civs, with reduced timelocks. However, the
+        more powerful ones (T2, EG-4, etc) are not included.
+    - type: Remove
+      message: >-
+        Removed outdated frontier roles like the janitor and mail carrier, for
+        real this time.
+    - type: Fix
+      message: Fixed old merc role being available on Camelot.
+  id: 2689
+  time: '2026-09-04T20:49:47.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4635
