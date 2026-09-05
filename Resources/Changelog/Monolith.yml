@@ -24501,3 +24501,20 @@ Entries:
   id: 2690
   time: '2026-09-05T00:37:01.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4638
+- author: SuperGDPWYL
+  changes:
+    - type: Remove
+      message: >-
+        PDV Freemen no longer spawn on Helios and can no longer be selected in
+        the loadout.
+    - type: Tweak
+      message: >-
+        TSF Contractors no longer understand Sol Common to make them possible to
+        impersonate.
+    - type: Remove
+      message: Emergency Responders no longer spawn with TSFMC tracking implants.
+    - type: Fix
+      message: You can no longer select loadouts for PDV Ambassadors or the Prince.
+  id: 2691
+  time: '2026-09-05T00:56:23.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4640
