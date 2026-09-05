@@ -24527,3 +24527,10 @@ Entries:
   id: 2692
   time: '2026-09-05T07:03:08.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4644
+- author: Mrrpip
+  changes:
+    - type: Remove
+      message: Removed OwORoaches from the pest pool.
+  id: 2693
+  time: '2026-09-05T07:03:14.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4645
