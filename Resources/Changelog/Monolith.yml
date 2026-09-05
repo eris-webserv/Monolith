@@ -24490,3 +24490,14 @@ Entries:
   id: 2689
   time: '2026-09-04T20:49:47.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4635
+- author: tonotom1
+  changes:
+    - type: Tweak
+      message: >-
+        Made heat armor plates iridite cost less stupid. Speed and pierce armor
+        plate slightly reduced cost.
+    - type: Remove
+      message: Pierce plates from cargo.
+  id: 2690
+  time: '2026-09-05T00:37:01.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4638
