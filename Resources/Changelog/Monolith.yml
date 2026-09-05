@@ -24534,3 +24534,37 @@ Entries:
   id: 2693
   time: '2026-09-05T07:03:14.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4645
+- author: SuperGDPWYL
+  changes:
+    - type: Add
+      message: >-
+        Added infiltration tools such as voice masks, blank vagrant IDs and DNA
+        scramblers back to the PDV uplink.
+    - type: Remove
+      message: >-
+        Removed chat ranks from all PDV roles except the Grand Vizier. You can
+        use voice masks to indicate your rank over the radio, and should
+        probably use them to hide your real name too!
+    - type: Remove
+      message: Removed orange IFF strobes from the PDV loadout.
+    - type: Tweak
+      message: >-
+        Adamantite is now the only material that PDV researched weapons and
+        suits cost.
+    - type: Add
+      message: PDV now have falsified records.
+    - type: Fix
+      message: Shrapnel grenades now have a valid localisation ID.
+    - type: Tweak
+      message: PDV body cameras are now chameleon!
+    - type: Add
+      message: PDV can now spawn with the Sultan's Pulsar 4 gauge shotgun.
+    - type: Add
+      message: >-
+        The PDV can now exchange the Lecter and Drozd TSF tier 1 firearms for
+        DC.
+    - type: Tweak
+      message: The PDV shipyard no longer announces purchases over Vanguard comms.
+  id: 2694
+  time: '2026-09-05T16:59:46.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4648
