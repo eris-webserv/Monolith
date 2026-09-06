@@ -24575,3 +24575,12 @@ Entries:
   id: 2695
   time: '2026-09-05T23:33:26.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4651
+- author: kasature90
+  changes:
+    - type: Tweak
+      message: >-
+        Wield delays for hristov/shenzhen/anubis, all 3 share the same melee
+        alt-attack damage now (24 blunt), hristov slowdown increased.
+  id: 2696
+  time: '2026-09-06T05:48:23.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4652
