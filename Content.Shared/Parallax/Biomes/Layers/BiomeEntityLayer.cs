@@ -9,6 +9,9 @@ namespace Content.Shared.Parallax.Biomes.Layers;
 [Serializable, NetSerializable]
 public sealed partial class BiomeEntityLayer : IBiomeWorldLayer
 {
+    [DataField]
+    public Color RadarColor = Color.FromHex("#808080");
+
     /// <inheritdoc/>
     [DataField("allowedTiles", customTypeSerializer:typeof(PrototypeIdListSerializer<ContentTileDefinition>))]
     public List<string> AllowedTiles { get; private set; } = new();
