@@ -21,6 +21,13 @@ public abstract partial class SharedBiomeSystem : EntitySystem
 
     protected const byte ChunkSize = 8;
 
+    public bool HasRecordedTile(BiomeComponent biome, Vector2i index)
+    {
+        var chunk = SharedMapSystem.GetChunkIndices(index, ChunkSize) * ChunkSize;
+        return biome.LoadedChunks.Contains(chunk) ||
+            biome.ModifiedTiles.TryGetValue(chunk, out var modified) && modified.Contains(index);
+    }
+
     private T Pick<T>(List<T> collection, float value)
     {
         // Listen I don't need this exact and I'm too lazy to finetune just for random ent picking.
@@ -122,13 +129,16 @@ public abstract partial class SharedBiomeSystem : EntitySystem
             var value = noiseCopy.GetNoise(indices.X, indices.Y);
             value = invert ? value * -1 : value;
 
+            if (layer is BiomeMetaLayer biased)
+                value += BiomeMetaLayer.GetOriginBias(indices.X, indices.Y, biased.OriginBiasRadius, biased.OriginBiasStrength);
+
             if (value < layer.Threshold)
                 continue;
 
             // Check if the tile is from meta layer, otherwise fall back to default layers.
             if (layer is BiomeMetaLayer meta)
             {
-                if (TryGetBiomeTile(indices, ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, seed, grid, out tile))
+                if (TryGetBiomeTile(indices, meta.Layers ?? ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, seed, grid, out tile))
                 {
                     return true;
                 }
@@ -241,12 +251,15 @@ public abstract partial class SharedBiomeSystem : EntitySystem
             var value = noiseCopy.GetNoise(indices.X, indices.Y);
             value = invert ? value * -1 : value;
 
+            if (layer is BiomeMetaLayer biased)
+                value += BiomeMetaLayer.GetOriginBias(indices.X, indices.Y, biased.OriginBiasRadius, biased.OriginBiasStrength);
+
             if (value < layer.Threshold)
                 continue;
 
             if (layer is BiomeMetaLayer meta)
             {
-                if (TryGetEntity(indices, ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, tileRef, seed, grid, out entity))
+                if (TryGetEntity(indices, meta.Layers ?? ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, tileRef, seed, grid, out entity))
                 {
                     return true;
                 }
@@ -316,12 +329,15 @@ public abstract partial class SharedBiomeSystem : EntitySystem
             var value = noiseCopy.GetNoise(indices.X, indices.Y);
             value = invert ? value * -1 : value;
 
+            if (layer is BiomeMetaLayer biased)
+                value += BiomeMetaLayer.GetOriginBias(indices.X, indices.Y, biased.OriginBiasRadius, biased.OriginBiasStrength);
+
             if (value < layer.Threshold)
                 continue;
 
             if (layer is BiomeMetaLayer meta)
             {
-                if (TryGetDecals(indices, ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, seed, grid, out decals))
+                if (TryGetDecals(indices, meta.Layers ?? ProtoManager.Index<BiomeTemplatePrototype>(meta.Template).Layers, seed, grid, out decals))
                 {
                     return true;
                 }
