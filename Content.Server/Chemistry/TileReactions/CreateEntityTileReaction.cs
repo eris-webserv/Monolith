@@ -8,6 +8,7 @@ using Robust.Shared.Prototypes;
 using Robust.Shared.Random;
 using Robust.Shared.Serialization.TypeSerializers.Implementations.Custom.Prototype;
 using System.Numerics;
+using Content.Server._Mono.Planets;
 
 namespace Content.Server.Chemistry.TileReactions;
 
@@ -42,6 +43,11 @@ public sealed partial class CreateEntityTileReaction : ITileReaction
         List<ReagentData>? data)
     {
         if (reactVolume < Usage)
+            return FixedPoint2.Zero;
+
+        var map = entityManager.GetComponent<TransformComponent>(tile.GridUid).MapUid;
+        if (entityManager.TryGetComponent<SuppressedTileSpawnsComponent>(map, out var suppressed)
+            && suppressed.Prototypes.Contains(Entity))
             return FixedPoint2.Zero;
 
         if (Whitelist != null)

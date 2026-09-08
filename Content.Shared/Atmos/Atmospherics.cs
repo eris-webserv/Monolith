@@ -178,6 +178,7 @@ namespace Content.Shared.Atmos
 			[Gas.Pluoxium] = Loc.GetString("gas-pluoxium-abbreviation"), // Funky/Goob - Ported gas
             [Gas.Tritium] = Loc.GetString("gas-tritium-abbreviation"),
             [Gas.WaterVapor] = Loc.GetString("gas-water-vapor-abbreviation"),
+            [Gas.LetoferolVapor] = Loc.GetString("gas-letoferol-vapor-abbreviation"), // Mono
         };
 
 
@@ -199,6 +200,7 @@ namespace Content.Shared.Atmos
             [Gas.Pluoxium] = Loc.GetString("gases-pluoxium"), // Funky/Goob - Ported gas
             [Gas.Tritium] = Loc.GetString("gases-tritium"),
             [Gas.WaterVapor] = Loc.GetString("gases-water-vapor"),
+            [Gas.LetoferolVapor] = Loc.GetString("gases-letoferol-vapor"), // Mono
         };
 
         #region Excited Groups
@@ -228,7 +230,7 @@ namespace Content.Shared.Atmos
         /// <summary>
         ///     Total number of gases. Increase this if you want to add more!
         /// </summary>
-        public const int TotalNumberOfGases = 13; //Funky/Goob: 9 >> 13
+        public const int TotalNumberOfGases = 14; // Funky/Goob/Mono: 9 >> 13 >> 14
 
         /// <summary>
         ///     This is the actual length of the gases arrays in mixtures.
@@ -305,9 +307,9 @@ namespace Content.Shared.Atmos
         ///     Divisor for Ammonia Oxygen reaction so that it doesn't happen instantaneously.
         /// </summary>
         public const float AmmoniaOxygenReactionRate = 10f;
-		
+
 		///Funky/Goob start
-		
+
         /// <summary>
         ///     The amount of energy 1 mole of BZ forming from N2O and plasma releases.
         /// </summary>
@@ -327,14 +329,14 @@ namespace Content.Shared.Atmos
         ///     The amount of energy 1 mol of Nitrium decomposing into nitrogen and water vapor releases.
         /// </summary>
         public const float NitriumDecompositionEnergy = 30e3f;
-		
+
 		/// <summary>
         ///     The amount of energy 1 mol of Pluoxium forming releases.
         /// </summary>
         public const float PluoxiumProductionEnergy = 250;
-		
+
 		///Funky/Goob end
-		
+
         /// <summary>
         ///     Determines at what pressure the ultra-high pressure red icon is displayed.
         /// </summary>
@@ -430,5 +432,6 @@ namespace Content.Shared.Atmos
         Healium = 10, //Funky/Goob
         Nitrium = 11, //Funky/Goob
 		Pluoxium = 12, //Funky/Goob
+        LetoferolVapor = 13, // Mono
     }
 }
