@@ -24814,3 +24814,16 @@ Entries:
   id: 2715
   time: '2026-09-13T23:18:14.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4696
+- author: Onezero0
+  changes:
+    - type: Add
+      message: >-
+        Added material crates to the TSF uplink, for converting FMC into
+        materials.
+    - type: Remove
+      message: >-
+        Removed (non)lethal armory fill crates from the TSF uplink since they
+        contain outdated gear.
+  id: 2716
+  time: '2026-09-13T23:18:56.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4694
