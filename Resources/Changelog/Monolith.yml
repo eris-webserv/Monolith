@@ -24805,3 +24805,12 @@ Entries:
   id: 2714
   time: '2026-09-12T20:32:47.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4687
+- author: SuperGDPWYL
+  changes:
+    - type: Tweak
+      message: >-
+        The blacklist for deposit boxes has once again been expanded
+        significantly in order to reduce the potential angles for abuse.
+  id: 2715
+  time: '2026-09-13T23:18:14.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4696
