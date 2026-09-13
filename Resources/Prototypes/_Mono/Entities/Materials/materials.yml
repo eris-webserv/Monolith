@@ -286,6 +286,14 @@
 
 - type: entity
   parent: SheetUraniumFissile
+  id: SheetUraniumFissile3
+  suffix: 1
+  components:
+  - type: Stack
+    count: 3
+
+- type: entity
+  parent: SheetUraniumFissile
   id: SheetUraniumFissile1
   suffix: 1
   components:
