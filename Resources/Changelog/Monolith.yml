@@ -24889,3 +24889,18 @@ Entries:
   id: 2723
   time: '2026-09-14T20:55:50.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4699
+- author: kasature90
+  changes:
+    - type: Tweak
+      message: >-
+        Attachments now affect wielded and base accuracy stats independently.
+        Most attachments don't apply most of their buffs when unwielded now
+        (such as VFG or scopes). Wielded stats are close to old values for them
+        though. Death to the one handed Lecter w/ PRL.
+    - type: Fix
+      message: >-
+        Fixed any and all cases where wielding a weapon could bring it's
+        minimum/maximum angles into the negatives.
+  id: 2724
+  time: '2026-09-14T21:00:39.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4703
