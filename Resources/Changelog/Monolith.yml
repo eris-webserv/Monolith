@@ -24827,3 +24827,14 @@ Entries:
   id: 2716
   time: '2026-09-13T23:18:56.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4694
+- author: SuperGDPWYL
+  changes:
+    - type: Tweak
+      message: Helios now spawns much further out.
+    - type: Tweak
+      message: >-
+        Helios has been equipped with drone repellant, effective up to 5
+        kilometres.
+  id: 2717
+  time: '2026-09-14T00:15:25.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4697
