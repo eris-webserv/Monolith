@@ -24904,3 +24904,20 @@ Entries:
   id: 2724
   time: '2026-09-14T21:00:39.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4703
+- author: SuperGDPWYL
+  changes:
+    - type: Remove
+      message: PDV ship LPCs, and T2+ guns and suits can no longer be researched.
+    - type: Remove
+      message: PDV Helios no longer starts with LPCs.
+    - type: Add
+      message: >-
+        PDV tier 2 and above gear has been added to the uplink, as well as some
+        missing ammo.
+    - type: Add
+      message: Telescopic shields have been added to the PDV uplink.
+    - type: Tweak
+      message: The DC costs of PDV ship LPCs have been drastically increased.
+  id: 2725
+  time: '2026-09-14T23:42:13.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4659
