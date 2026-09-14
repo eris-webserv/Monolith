@@ -24868,3 +24868,13 @@ Entries:
   id: 2721
   time: '2026-09-14T20:52:53.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4695
+- author: SuperGDPWYL
+  changes:
+    - type: Add
+      message: >-
+        The PDV have developed specialised overwatch jammers in the interest of
+        keeping Helios hidden. They are now purchaseable from the PDV uplink for
+        1 DC.
+  id: 2722
+  time: '2026-09-14T20:54:03.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4700
