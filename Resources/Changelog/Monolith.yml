@@ -24861,3 +24861,10 @@ Entries:
   id: 2720
   time: '2026-09-14T20:52:46.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4701
+- author: Onezero0
+  changes:
+    - type: Fix
+      message: Removed outdated industry guidebook pages.
+  id: 2721
+  time: '2026-09-14T20:52:53.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4695
