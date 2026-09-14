@@ -24878,3 +24878,14 @@ Entries:
   id: 2722
   time: '2026-09-14T20:54:03.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4700
+- author: Mrrpip
+  changes:
+    - type: Tweak
+      message: >-
+        12 and 4 gauge flares can now be purchased or made through draconic
+        munitions research
+    - type: Tweak
+      message: shotgun flares toned down from a radius of 15 tiles.
+  id: 2723
+  time: '2026-09-14T20:55:50.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4699
