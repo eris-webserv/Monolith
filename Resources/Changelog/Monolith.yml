@@ -24852,3 +24852,12 @@ Entries:
   id: 2719
   time: '2026-09-14T20:11:27.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4604
+- author: SuperGDPWYL
+  changes:
+    - type: Tweak
+      message: >-
+        Buffed the reward for defending a Solarian Vault even further to 250
+        FMC.
+  id: 2720
+  time: '2026-09-14T20:52:46.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4701
