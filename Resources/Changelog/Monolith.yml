@@ -24838,3 +24838,10 @@ Entries:
   id: 2717
   time: '2026-09-14T00:15:25.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4697
+- author: SuperGDPWYL
+  changes:
+    - type: Fix
+      message: Jupiter now actually no longer spawns.
+  id: 2718
+  time: '2026-09-14T19:36:06.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4680
