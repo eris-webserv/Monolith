@@ -24921,3 +24921,12 @@ Entries:
   id: 2725
   time: '2026-09-14T23:42:13.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4659
+- author: Onezero0
+  changes:
+    - type: Add
+      message: >-
+        Floodlights no longer consume power. They still need a power cell to
+        work though.
+  id: 2726
+  time: '2026-09-15T21:59:40.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4705
