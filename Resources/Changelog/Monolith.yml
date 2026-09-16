@@ -24930,3 +24930,10 @@ Entries:
   id: 2726
   time: '2026-09-15T21:59:40.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4705
+- author: NazrinNya
+  changes:
+    - type: Add
+      message: Fultons! Now with 200m distance limit.
+  id: 2727
+  time: '2026-09-16T23:36:04.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4713
