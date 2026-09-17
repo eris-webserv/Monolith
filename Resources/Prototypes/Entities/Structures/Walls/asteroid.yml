@@ -772,6 +772,9 @@
     - map: [ "enum.EdgeLayer.West" ]
       state: rock_west
   - type: RequiresGrid
+  - type: Tag
+    tags:
+    - HZFlattenableTerrain
 
 # Ore veins
 - type: entity
