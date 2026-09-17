@@ -24937,3 +24937,10 @@ Entries:
   id: 2727
   time: '2026-09-16T23:36:04.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4713
+- author: Onezero0
+  changes:
+    - type: Tweak
+      message: '"Syndicate" announcement console has been MOGGED.'
+  id: 2728
+  time: '2026-09-17T00:54:43.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4714
