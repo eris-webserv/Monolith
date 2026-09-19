@@ -24944,3 +24944,10 @@ Entries:
   id: 2728
   time: '2026-09-17T00:54:43.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4714
+- author: Mrrpip
+  changes:
+    - type: Add
+      message: Adds more loadout options to Vagrant.
+  id: 2729
+  time: '2026-09-19T01:05:01.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4716
