@@ -24951,3 +24951,10 @@ Entries:
   id: 2729
   time: '2026-09-19T01:05:01.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4716
+- author: lordsej
+  changes:
+    - type: Tweak
+      message: New Cat Sprite for CarpSuit
+  id: 2730
+  time: '2026-09-19T19:11:49.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4727
