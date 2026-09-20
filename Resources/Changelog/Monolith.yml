@@ -24965,3 +24965,12 @@ Entries:
   id: 2731
   time: '2026-09-19T19:12:43.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4693
+- author: SuperGDPWYL
+  changes:
+    - type: Add
+      message: >-
+        Temperature alert sprites with increased clarity have been added,
+        courtesy of Zethine!
+  id: 2732
+  time: '2026-09-20T06:58:54.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4702
