@@ -25026,3 +25026,58 @@ Entries:
   id: 2734
   time: '2026-09-20T06:58:54.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4702
+- author: kasature90
+  changes:
+    - type: Add
+      message: >-
+        All shipyard ships ingame have gone over a pass to remove unmaintained
+        or low-quality ships. New ones have been added to compensate for missing
+        niches or roles. Decisions are not final, so please give feedback on
+        what roles are missing or any problems, this is just the basics and more
+        ships will still be added.
+    - type: Add
+      message: New AC-35 35mm chaingun for a heavier alternative to the Draupnir.
+    - type: Add
+      message: >-
+        TSF shipyard additions  - Calypso full remap, Banshee (T1), Cinquedea
+        (T1), Luda (T4), QJ271 (T0), Xiphos (T0), Seax (T0), Paladin (T0),
+        Polaris full remap.
+    - type: Add
+      message: >-
+        PDV shipyard additions - Bazalt (T0), Gadfly (T0), Ontos (T0), Tethys
+        full remap, Saturn full remap, Europa full remap, Scorpion armaments
+        change, Osa-II (T2)
+    - type: Add
+      message: >-
+        Civilian shipyard additions (Base) - Xinhua, Guppy, Updated
+        Noble/Sakuratsu/Autumn (to match the former MMC variants).
+    - type: Add
+      message: Civilian shipyard additions (MIL) - QJ-270/340/490, Xinhua, Talon
+    - type: Add
+      message: Civilian shipyard additions (MED) - Skalpel, Shirokami
+    - type: Add
+      message: Civilian shipyard additions (EXP) - Pelican, Meteor
+    - type: Add
+      message: CSEC shipyard additions - Hornet, Lightning, Petra
+    - type: Add
+      message: VG shipyard additions - Keelback, Lancehead, and Leviathan.
+    - type: Add
+      message: >-
+        Cargo hauling is back, so the cargo ships, turn-in chutes, and crate
+        vendors have use again. Plus, you can make the crates in precision
+        assembler now.
+    - type: Add
+      message: >-
+        Hardpoints. You require one under an anchored shipgun for it to work,
+        they come in the 3 classes and 5 sizes, and they support any size under
+        theirs..
+    - type: Tweak
+      message: >-
+        Some faction ships have had their tiers changed. Neptune is now T2,
+        Kortik-R is now T3, Hammerhead is now T2, Fujian is now T2, Fracture is
+        now T1, Europa is now T3. The MMC Yukikaze is now T1 additionally.
+    - type: Tweak
+      message: Almost all shipguns are unanchorable now. You just need the hardpoint.
+  id: 2735
+  time: '2026-09-20T22:30:44.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4624
