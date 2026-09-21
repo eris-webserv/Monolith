@@ -25081,3 +25081,18 @@ Entries:
   id: 2735
   time: '2026-09-20T22:30:44.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4624
+- author: Onezero0
+  changes:
+    - type: Add
+      message: >-
+        Added signal flares. You spawn with some, you can print more from
+        lathes, and you can buy even more from salvage vendors.
+    - type: Add
+      message: >-
+        You can now print flare boxes from autolathes, and anything that can
+        print tools.
+    - type: Tweak
+      message: Flare gun now is for launching flares, not 12 gauge. Sorry.
+  id: 2736
+  time: '2026-09-21T01:51:10.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4730
