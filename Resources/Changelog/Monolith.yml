@@ -25096,3 +25096,12 @@ Entries:
   id: 2736
   time: '2026-09-21T01:51:10.0000000+00:00'
   url: https://github.com/Monolith-Station/Monolith/pull/4730
+- author: SuperGDPWYL
+  changes:
+    - type: Tweak
+      message: >-
+        Colonel and Grand Vizier now spawn with their equipment instead of it
+        being in their lockers.
+  id: 2737
+  time: '2026-09-21T01:52:44.0000000+00:00'
+  url: https://github.com/Monolith-Station/Monolith/pull/4723
