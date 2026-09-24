@@ -1,0 +1,9 @@
+- type: shader
+  id: BidenBlastBeam
+  kind: source
+  path: /Textures/_Mono/Shaders/biden_blast_beam.swsl
+
+- type: shader
+  id: BidenBlastCharge
+  kind: source
+  path: /Textures/_Mono/Shaders/biden_blast_charge.swsl

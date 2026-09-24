@@ -1,0 +1,28 @@
+light_mode unshaded;
+blend_mode mix;
+
+uniform highp vec2 CENTER;
+uniform highp float RADIUS;
+uniform highp float PROGRESS;
+uniform highp float CLOCK;
+varying highp vec2 position;
+
+void vertex() {
+    position = aPos;
+}
+
+void fragment() {
+    highp vec2 p = (position - CENTER) / RADIUS;
+    highp float growth = PROGRESS * PROGRESS * (3.0 - 2.0 * PROGRESS);
+    highp float angle = atan(p.y, p.x);
+    highp float roughness = sin(angle * 5.0 + CLOCK * 2.0) * 0.035
+        + sin(angle * 9.0 - CLOCK * 3.0) * 0.02;
+    highp float r = length(p) / (0.3 + growth * 0.7);
+    r *= 1.0 + roughness * smoothstep(0.1, 0.6, r);
+    highp float core = exp(-r * r * 8.0);
+    highp float glow = exp(-r * r * 1.4) * 0.65;
+    highp float halo = exp(-r * r * 0.5) * 0.15;
+    highp float alpha = clamp(core + glow + halo, 0.0, 1.0);
+    alpha *= smoothstep(0.0, 0.06, PROGRESS) * (1.0 - smoothstep(2.5, 3.0, length(p)));
+    COLOR = vec4(mix(vec3(0.35, 0.7, 1.0), vec3(1.0), core), alpha);
+}

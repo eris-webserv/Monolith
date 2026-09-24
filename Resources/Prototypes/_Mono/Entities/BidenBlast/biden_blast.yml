@@ -1,0 +1,68 @@
+- type: entity
+  parent: LeftArmCyberneticBase
+  id: BidenBlastLeftArm
+  name: Biden Blast left arm
+  description: The right to bear arms. Allows you to fire an incredibly strong beam... once.
+  components:
+  - type: GenerateChildPart
+    id: BidenBlastLeftHand
+  - type: BodyPart
+    integrityThresholds:
+      CriticallyWounded: 1000
+      HeavilyWounded: 75
+      ModeratelyWounded: 60
+      SomewhatWounded: 40
+      LightlyWounded: 20
+      Healthy: 10
+    onAdd:
+    - type: BidenBlast
+      range: 7
+      limbEffects:
+      - part: Arm
+        symmetry: Left
+        vaporize: true
+
+
+- type: entity
+  parent: LeftHandCybernetic
+  id: BidenBlastLeftHand
+  name: Biden Blast left hand
+  description: A cybernetic hand fitted to the Biden Blast arm.
+
+- type: entity
+  parent: BidenBlastLeftArm
+  id: BidenBlastLeftArmAdmeme
+  suffix: Admeme
+  description: BIDEN BLAST [!]
+  components:
+  - type: BodyPart
+    onAdd:
+    - type: BidenBlast
+      continueChargeSound: true
+      fireTime: 15
+      chargeSound:
+        path: /Audio/_Mono/Items/biden_blast.ogg
+      fireSound:
+        path: /Audio/_Mono/Items/BidenBlast/shieldgenfire.ogg
+
+- type: entity
+  id: ActionBidenBlast
+  name: Biden Blast
+  description: You've done well so far...
+  categories: [ HideSpawnMenu ]
+  components:
+  - type: WorldTargetAction
+    icon: Interface/Actions/harm.png
+    itemIconStyle: NoItem
+    checkCanAccess: false
+    range: 0
+    useDelay: 30
+    event: !type:BidenBlastActionEvent
+
+- type: entity
+  id: EffectBidenBlast
+  name: Biden Blast
+  categories: [ HideSpawnMenu ]
+  save: false
+  components:
+  - type: BidenBlastEffect
