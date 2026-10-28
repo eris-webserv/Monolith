@@ -20,6 +20,7 @@
     <File Path="Directory.Packages.props" />
     <File Path="README.md" />
   </Folder>
+  <Project Path="Content.Atmosia.Server/Content.Atmosia.Server.csproj" />
   <Project Path="Content.Benchmarks/Content.Benchmarks.csproj" />
   <Project Path="Content.Client/Content.Client.csproj">
     <BuildDependency Project="RobustToolbox/Lidgren.Network/Lidgren.Network.csproj" />
@@ -39,6 +40,7 @@
   </Project>
   <Project Path="Content.Shared.Database/Content.Shared.Database.csproj" />
   <Project Path="Content.Shared/Content.Shared.csproj" />
+  <Project Path="Content.Atmosia.IntegrationTests/Content.Atmosia.IntegrationTests.csproj" />
   <Project Path="Content.Tests/Content.Tests.csproj" />
   <Project Path="Content.Tools/Content.Tools.csproj" />
   <Project Path="Content.YAMLLinter/Content.YAMLLinter.csproj" />

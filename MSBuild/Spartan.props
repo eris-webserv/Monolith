@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <SpartanNativeRoot Condition="'$(SpartanNativeRoot)' == ''">$(MSBuildThisFileDirectory)../Native/Spartan</SpartanNativeRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(SpartanNativeRoot)/linux-x64/libspartan_ffi.so"
+          Condition="Exists('$(SpartanNativeRoot)/linux-x64/libspartan_ffi.so')"
+          Link="libspartan_ffi.so" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(SpartanNativeRoot)/win-x64/spartan_ffi.dll"
+          Condition="Exists('$(SpartanNativeRoot)/win-x64/spartan_ffi.dll')"
+          Link="spartan_ffi.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

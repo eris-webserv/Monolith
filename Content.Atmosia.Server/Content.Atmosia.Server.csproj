@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>../bin/Content.Server/</OutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <OutputType Condition="'$(FullRelease)' != 'True'">Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WarningsAsErrors>RA0032;nullable</WarningsAsErrors>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+  <Import Project="../MSBuild/Content.props" />
+  <Import Project="../MSBuild/Spartan.props" />
+  <ItemGroup>
+    <ProjectReference Include="../Content.Server/Content.Server.csproj" />
+  </ItemGroup>
+  <Import Project="../RobustToolbox/MSBuild/Robust.Properties.targets" />
+</Project>

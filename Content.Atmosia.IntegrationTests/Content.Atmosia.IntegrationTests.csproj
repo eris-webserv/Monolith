@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>../bin/Content.Atmosia.IntegrationTests/</OutputPath>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <Import Project="../MSBuild/Content.props" />
+  <ItemGroup>
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <ProjectReference Include="../Content.Atmosia.Server/Content.Atmosia.Server.csproj" />
+  </ItemGroup>
+  <Import Project="../RobustToolbox/MSBuild/Robust.Properties.targets" />
+</Project>
