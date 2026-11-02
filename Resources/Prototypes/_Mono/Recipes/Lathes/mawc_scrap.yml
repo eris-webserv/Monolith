@@ -1,7 +1,7 @@
 - type: latheRecipe
   id: IriditeMAWC
   name: materials-iridite
-  description: A complex alloy synthesized from atmospheric gases, commonly used outside of the sector for heavy industrial machinery, nanofibers, and high-grade computers.
+  description: recipe-mawc-iridite-description
   icon:
     sprite: _Mono/Objects/Materials/iridite.rsi
     state: iridite
@@ -16,7 +16,7 @@
 - type: latheRecipe
   id: PlastitaniumMAWC
   name: materials-plastitanium
-  description: An advanced, high-strength alloy. Even if it's extremely abundant in core sectors, it is hard to find in the Colossus region.
+  description: recipe-mawc-plastitanium-description
   icon:
     sprite: _Mono/Objects/Materials/plastitanium.rsi
     state: plastitanium
